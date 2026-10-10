@@ -20,7 +20,7 @@ hr{border:0;border-top:1px solid #eceff3;margin:16px 0}h2,h3{margin:4px 0 10px}
 .topback{display:flex;justify-content:flex-end;margin-bottom:12px}.topback .btn{margin:0}</style><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon.svg"></head>
 <body>
 
-<header id="topbar"><b>🧪 LAB — Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.1.0 · Motor 5.13.3</span> <button id="updateAppBtn" class="btn" style="padding:5px 8px;font-size:12px;margin-left:8px" onclick="forceAppUpdate()">↻ Actualizar app</button><div class="tabs"><button class="btn primary" onclick="goToAdmin()">Planes</button><button class="btn primary" onclick="goToExecution()">▶ Modo Ejecución</button><button class="btn" onclick="configureAdminPin()">🔐 PIN</button></div></header><div style="background:#f4e8ff;color:#4d176a;text-align:center;padding:10px;font-weight:800;border-bottom:2px solid #8d4cb4">🧪 ENTORNO LAB · DATOS FICTICIOS · NO ES PRODUCCIÓN</div><div id="labtests" class="wrap"><div class="card" style="border:2px solid #8d4cb4"><h2>🧪 Pruebas del laboratorio</h2><p class="muted">Ejecuta pruebas sobre datos sintéticos en memoria. No modifica ni los datos del laboratorio ni los de producción.</p><div class="row"><button class="btn primary" onclick="runLabTests()">Ejecutar pruebas</button><button class="btn" id="labExport" onclick="exportLabReport()" disabled>Exportar resultados JSON</button></div><div id="labResults" class="muted" style="margin-top:12px">Todavía no se ejecutaron pruebas.</div></div></div><div id="app" class="wrap"></div>
+<header id="topbar"><b>🧪 LAB — Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.2.0 · Motor 5.13.3</span> <button id="updateAppBtn" class="btn" style="padding:5px 8px;font-size:12px;margin-left:8px" onclick="forceAppUpdate()">↻ Actualizar app</button><div class="tabs"><button class="btn primary" onclick="goToAdmin()">Planes</button><button class="btn primary" onclick="goToExecution()">▶ Modo Ejecución</button><button class="btn" onclick="configureAdminPin()">🔐 PIN</button></div></header><div style="background:#f4e8ff;color:#4d176a;text-align:center;padding:10px;font-weight:800;border-bottom:2px solid #8d4cb4">🧪 ENTORNO LAB · DATOS FICTICIOS · NO ES PRODUCCIÓN</div><div id="labtests" class="wrap"><div class="card" style="border:2px solid #8d4cb4"><h2>🧪 Pruebas del laboratorio</h2><p class="muted">Ejecuta pruebas sobre datos sintéticos en memoria. No modifica ni los datos del laboratorio ni los de producción.</p><div class="row"><button class="btn primary" onclick="runLabTests()">Ejecutar pruebas</button><button class="btn" id="labExport" onclick="exportLabReport()" disabled>Exportar resultados JSON</button></div><div id="labResults" class="muted" style="margin-top:12px">Todavía no se ejecutaron pruebas.</div></div></div><div id="app" class="wrap"></div>
 <script>
 const KEY="decision_planner_lab_v1";
 let db={plans:[],finalizations:[]}, current=null, history=[], awarded=[];
@@ -380,7 +380,7 @@ function showFinalItems(finalId){setExecutionMode(true);let f=finalId?(db.finali
 function results(finalId=null,persist=true){setExecutionMode(true);if(persist)saveExec("final",finalId,null);let f=finalId?(db.finalizations||[]).find(x=>x.id===finalId):null;if(!f)f={title:"Prepárate para…",intro:"",journeyMode:"all",journeyTitle:"",middle:"",itemsMode:"all",itemsTitle:"",showItemsButton:false,itemsButtonLabel:"Ver ítems obtenidos",finalTitle:"",outro:"",showFinish:true,finishLabel:"Finalizar",deepIntro:"",deepRandomPrompt:"¿Te gustó esta idea o preferís otra?",deepMode:"all",deepIncludeAll:false,deepLinks:[]};let pid=current?.id,hh=f.journeyMode==="current"?history.filter(s=>(s.planId||pid)===pid):history;let journey=f.journeyMode==="none"?"":hh.map((s,n)=>{let pp=db.plans.find(x=>x.id===(s.planId||pid)),d=pp?.decisions.find(x=>x.id===s.decisionId),o=d?.options.find(x=>x.id===s.optionId);return o?`<div style="padding:10px 0;${n?'border-top:1px solid #eceff3':''}"><span class=muted>${n+1}.</span> ${esc(sentenceForChoice(d.text,o.text))}</div>`:""}).join("");let uniq=finalItems(f,pid);let parts=[];if(current?.showScoreAtEnd===true)parts.push(`<div class=card><h3>Puntaje</h3><div style="font-size:28px;font-weight:700">${score.general}</div></div>`);if(String(f.title||"").trim())parts.push(`<div class=card><h2>${esc(f.title)}</h2></div>`);if(String(f.intro||"").trim())parts.push(`<div class=card>${esc(f.intro).replace(/\n/g,"<br>")}</div>`);if(journey)parts.push(`<div class=card>${String(f.journeyTitle||"").trim()?`<h3>${esc(f.journeyTitle)}</h3>`:""}${journey}</div>`);if(String(f.middle||"").trim())parts.push(`<div class=card>${esc(f.middle).replace(/\n/g,"<br>")}</div>`);if(uniq.length&&f.showItemsButton!==true)parts.push(`<div class=card>${String(f.itemsTitle||"").trim()?`<h3>${esc(f.itemsTitle)}</h3>`:""}${renderGroupedItems(uniq)}</div>`);if(f.showItemsButton===true&&f.itemsMode!=="none")parts.push(`<div class=card><button class="btn primary" style="display:block;width:100%;text-align:center" onclick="showFinalItems(${finalId?`'${finalId}'`:"null"})">${esc(f.itemsButtonLabel||"Ver ítems obtenidos")}</button></div>`);if(String(f.finalTitle||"").trim())parts.push(`<div class=card><h2>${esc(f.finalTitle)}</h2></div>`);if(String(f.outro||"").trim())parts.push(`<div class=card>${esc(f.outro).replace(/\n/g,"<br>")}</div>`);
 {let pool=ideaPool(f);if(pool.length){let body=(f.deepMode==="r1"||f.deepMode==="random")&&rouletteRemaining(f)<=0?"":(f.deepMode==="r1"||f.deepMode==="random")?`<button class="btn primary" style="display:block;width:100%;text-align:center" onclick="randomIdea('${f.id||finalId}')">🎲 ${esc(f.rouletteLabel||"Ideas al azar")}</button>`:(f.deepIncludeAll===true?pool.map(x=>`<button class="choice" onclick="startDeep('${x.id}')"><div class=ct>${esc(x.name||"Ver idea")}</div></button>`).join(""):(f.deepLinks||[]).filter(x=>x.planId).map(x=>`<button class="choice" onclick="startDeep('${x.planId}')"><div class=ct>${esc(x.text||"Ver idea")}</div></button>`).join(""));parts.push(`<div class=card>${String(f.deepIntro||"").trim()?`<div style="margin-bottom:12px">${esc(f.deepIntro).replace(/\n/g,"<br>")}</div>`:""}${body}</div>`);}}
 let li=null,ir=null;try{li=JSON.parse(localStorage.getItem(LAST_IDEA_KEY)||"null");ir=JSON.parse(localStorage.getItem("dplab_idea_return_v1")||"null")}catch(e){};let activeSession=getExec();if(li&&ir&&activeSession&&ir.planId===activeSession.planId&&db.plans.some(p=>p.id===li.planId&&planType(p)==="deep"))parts.push(`<div class=row><button class=btn onclick="reopenLastIdea()">→ Volver a la última Idea revisada</button></div>`);
-parts.push(`<footer class="card" style="margin-top:28px"><b>Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.1.0 · Motor 5.13.3</span><div class="tabs" style="margin-top:10px">${f.showFinish!==false?`<button class="btn primary" onclick="showRunHome()">✓ ${esc(f.finishLabel||"Finalizar")}</button>`:""}<button class=btn onclick="requestAdmin()">⚙ Administración</button></div></footer>`);
+parts.push(`<footer class="card" style="margin-top:28px"><b>Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.2.0 · Motor 5.13.3</span><div class="tabs" style="margin-top:10px">${f.showFinish!==false?`<button class="btn primary" onclick="showRunHome()">✓ ${esc(f.finishLabel||"Finalizar")}</button>`:""}<button class=btn onclick="requestAdmin()">⚙ Administración</button></div></footer>`);
 $('#app').innerHTML=parts.join("")}
 function downloadBackupBlob(blob,name){let a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 function bytesToB64(bytes){let s="",step=0x8000;for(let i=0;i<bytes.length;i+=step)s+=String.fromCharCode(...bytes.subarray(i,i+step));return btoa(s)}
@@ -468,41 +468,143 @@ if("serviceWorker" in navigator){
 }
 </script>
 <script>
-const LAB_VERSION="0.1.0", ENGINE_VERSION="5.13.3";
-let labReport=null;
-function runLabTests(){
- const original={db,current,history,awarded,score};
- const cases=[],run=(name,fn)=>{try{const detail=fn();cases.push({name,status:"PASS",detail:String(detail||"Correcto")})}catch(e){cases.push({name,status:"FAIL",detail:String(e?.message||e)})}};
- const assert=(v,msg)=>{if(!v)throw Error(msg)};
- const item={id:"item-fixture",name:"Ítem de prueba",description:"",image:""};
- const plan={id:"plan-fixture",type:"principal",name:"Plan ficticio",items:[],decisions:[{id:"d1",text:"Pregunta",options:[{id:"o1",text:"Sí",itemAwards:[{itemId:item.id,tagId:"tag-fixture"}],points:5}]}]};
- const idea={id:"idea-fixture",type:"deep",name:"Idea ficticia",items:[],decisions:[]};
+const LAB_VERSION="0.2.0", ENGINE_VERSION="5.13.3";
+let labReport=null,labBusy=false;
+async function runLabTests(){
+ if(labBusy)return;
+ labBusy=true;
+ const btn=document.querySelector('#labtests button'),exportBtn=document.getElementById("labExport");
+ if(btn)btn.disabled=true;
+ exportBtn.disabled=true;
+ const result=document.getElementById("labResults");
+ result.textContent="Ejecutando pruebas con fixtures ficticios…";
+ const original={db,current,history,awarded,score,uiMode,executionMode:typeof executionMode==="undefined"?null:executionMode};
+ // Backup only LAB keys. No production storage keys are read or written.
+ const keys=[SESSION_KEY,LAST_IDEA_KEY,"dplab_idea_return_v1",IDEA_AWARD_BASE_KEY,SPIN_USAGE_KEY,"dplab_ui_mode"];
+ const originalStorage=Object.fromEntries(keys.map(k=>[k,localStorage.getItem(k)]));
+ const originalHtml=document.getElementById("app").innerHTML;
+ const cases=[],assert=(v,m)=>{if(!v)throw Error(m)};
+ const run=async(id,name,expected,fn)=>{
+  let actual="",status="PASS",error=null;
+  try{actual=String(await fn());}catch(e){status="FAIL";error=String(e?.stack||e);actual=String(e?.message||e)}
+  cases.push({id,name,status,expected,actual,error});
+ };
+ const item={id:"lab-item",name:"Ítem LAB",description:"",image:""};
+ const item2={id:"lab-item-2",name:"Ítem secundario",description:"",image:""};
+ const main={id:"lab-main",type:"principal",name:"Plan LAB",start:"lab-d1",items:[],decisions:[{id:"lab-d1",text:"Elegir",options:[{id:"lab-o1",text:"Sí",score:{general:5},next:"END",itemAwards:[{itemId:item.id,tagId:"lab-tag"}]}]}]};
+ const secondary={id:"lab-secondary",type:"secondary",name:"Secundario",start:"lab-d2",items:[],decisions:[{id:"lab-d2",text:"Secundaria",options:[{id:"lab-o2",text:"Aceptar",score:{general:3},next:"END",itemAwards:[{itemId:item2.id,tagId:""}]}]}]};
+ const idea={id:"lab-idea",type:"deep",name:"Idea LAB",items:[],decisions:[],ideaLevels:{soft:{text:"Soft",yes:"Sí",no:"No",up:"Subir",result:"Soft final",actionAwards:{yes:[],no:[],up:[]}},medium:{text:"Medium",yes:"Sí",no:"No",up:"Subir",result:"Medium final",actionAwards:{yes:[],no:[],up:[]}},hard:{text:"Hard",yes:"Sí",no:"No",result:"Hard final",actionAwards:{yes:[{itemId:item2.id,tagId:"lab-tag"}],no:[]}}}};
+ const final={id:"lab-final",title:"Final LAB",itemsMode:"all",showItemsButton:true,deepMode:"r1",deepIncludeAll:true,spinCost:5,rouletteLabel:"Ideas LAB",deepLinks:[]};
  try{
-  db={plans:[plan,idea],finalizations:[],hiddenItems:[item],itemTags:[{id:"tag-fixture",name:"Test"}]};
-  current=plan;history=[];awarded=[];score={general:0};
-  run("01 · Clasificación de planes e Ideas",()=>{assert(planType(plan)==="principal"&&planType(idea)==="deep","Clasificación incorrecta")});
-  run("02 · Disponibilidad por puntaje",()=>{assert(!eligibleByScore({availability:{enabled:true,min:5}}),"Permitió 0 puntos");score={general:5};assert(eligibleByScore({availability:{enabled:true,min:5}}),"Rechazó 5 puntos");score={general:0}});
-  run("03 · Puntos acumulados",()=>{addScore(5);addScore(3);assert(score.general===8,"Se esperaban 8 puntos")});
-  run("04 · Premios con tags",()=>{const a=normalizeAwards(plan.decisions[0].options[0]);assert(a.length===1&&a[0].tagId==="tag-fixture","Premio/tag incorrecto")});
-  run("05 · Ítem global accesible desde otro plan",()=>{assert(findAwardItem(item.id,idea)?.id===item.id,"No resolvió ítem global")});
-  run("06 · Ítems de Idea en finalización general",()=>{awarded=[{planId:idea.id,itemId:item.id,tagId:"tag-fixture"}];const all=finalItems({itemsMode:"all"},plan.id);assert(all.length===1&&all[0].item.id===item.id,"No aparece ítem de Idea en el plan");});
-  run("07 · Filtro ítems solo plan actual",()=>{assert(finalItems({itemsMode:"current"},plan.id).length===0,"Incluyó ítem de otro plan")});
-  run("08 · No duplicar ítems en resultados",()=>{awarded.push({...awarded[0]});assert(finalItems({itemsMode:"all"},plan.id).length===1,"Duplicó ítem")});
-  run("09 · Resolución de referencias a opciones",()=>{assert(optionItemIds({itemIds:["a","a","b"]}).join(",")==="a,b","No eliminó duplicados")});
-  run("10 · Narrativa de elección",()=>{assert(sentenceForChoice("Prefiero","Caminar")==="Prefiero caminar.","Narrativa inesperada")});
-  run("11 · Giros según puntaje",()=>{score={general:8};assert(rouletteRemaining({id:"fixture-no-use",spinCost:5})===1,"Cantidad de giros incorrecta");assert(rouletteRemaining({id:"fixture-no-use",spinCost:0})===Infinity,"Giros ilimitados incorrectos")});
-  run("12 · Aislamiento de identificadores",()=>{assert(KEY==="decision_planner_lab_v1","Clave IndexedDB incorrecta");assert(SESSION_KEY.startsWith("dplab_"),"Clave sesión incorrecta");});
- }finally{db=original.db;current=original.current;history=original.history;awarded=original.awarded;score=original.score;}
- const passed=cases.filter(c=>c.status==="PASS").length;
- labReport={format:"DecisionPlanLabTestReport",labVersion:LAB_VERSION,engineVersion:ENGINE_VERSION,timestamp:new Date().toISOString(),origin:location.origin,path:location.pathname,storage:"LAB (separado)",testData:"sintéticos en memoria",summary:{total:cases.length,passed,failed:cases.length-passed},tests:cases,notes:["Pruebas unitarias y de integración ligera; no sustituyen pruebas E2E en Safari.","No se exportan planes, ítems, sesiones ni datos personales."]};
- document.getElementById("labResults").innerHTML=`<b>${passed}/${cases.length} aprobadas</b>`+cases.map(c=>`<div style="margin-top:8px">${c.status==="PASS"?"✅":"❌"} ${esc(c.name)}${c.status==="FAIL"?` — ${esc(c.detail)}`:""}</div>`).join("");
- document.getElementById("labExport").disabled=false;
+  db={plans:[main,secondary,idea],finalizations:[final],hiddenItems:[item,item2],itemTags:[{id:"lab-tag",name:"LAB"}]};
+  current=main;history=[];awarded=[];score={general:0};
+  keys.forEach(k=>localStorage.removeItem(k));
+  await run("01","Clasificación de planes e Ideas","principal / secondary / deep",()=>{assert(planType(main)==="principal"&&planType(secondary)==="secondary"&&planType(idea)==="deep","Tipos incorrectos");return "principal / secondary / deep"});
+  await run("02","Disponibilidad por puntaje","Bloquea con 0, permite con 5",()=>{const a={availability:{enabled:true,min:5}};assert(!eligibleByScore(a),"Permitió 0");score.general=5;assert(eligibleByScore(a),"Rechazó 5");score.general=0;return "Bloquea con 0, permite con 5"});
+  await run("03","Puntos acumulados","8",()=>{addScore(5);addScore(3);assert(score.general===8,"Obtenido: "+score.general);return score.general});
+  await run("04","Premios con tags","1 premio con lab-tag",()=>{let a=normalizeAwards(main.decisions[0].options[0]);assert(a.length===1&&a[0].tagId==="lab-tag","Premio incorrecto");return "1 premio con "+a[0].tagId});
+  await run("05","Ítem global accesible desde otro plan","lab-item",()=>{let x=findAwardItem(item.id,idea);assert(x?.id===item.id,"Ítem no encontrado");return x.id});
+  await run("06","Ítems de Idea en finalización general","lab-item-2",()=>{awarded=[{planId:idea.id,itemId:item2.id,tagId:"lab-tag"}];let a=finalItems({itemsMode:"all"},main.id);assert(a.length===1&&a[0].item.id===item2.id,"No aparece");return a[0].item.id});
+  await run("07","Filtro ítems solo plan actual","0 ítems",()=>{let n=finalItems({itemsMode:"current"},main.id).length;assert(n===0,"Obtenido: "+n);return n+" ítems"});
+  await run("08","No duplicar ítems en resultados","1 ítem",()=>{awarded.push({...awarded[0]});let n=finalItems({itemsMode:"all"},main.id).length;assert(n===1,"Obtenido: "+n);return n+" ítem"});
+  await run("09","Resolución de referencias a opciones","a,b",()=>{let a=optionItemIds({itemIds:["a","a","b"]}).join(",");assert(a==="a,b","Obtenido: "+a);return a});
+  await run("10","Narrativa de elección","Prefiero caminar.",()=>{let x=sentenceForChoice("Prefiero","Caminar");assert(x==="Prefiero caminar.","Obtenido: "+x);return x});
+  await run("11","Giros según puntaje","1 giro / ilimitados",()=>{score.general=8;let n=rouletteRemaining(final);assert(n===1,"Obtenido: "+n);assert(rouletteRemaining({...final,spinCost:0})===Infinity,"No ilimitados");return "1 giro / ilimitados"});
+  await run("12","Aislamiento de identificadores","LAB DB y claves LAB",()=>{assert(KEY==="decision_planner_lab_v1"&&SESSION_KEY.startsWith("dplab_"),"Identificadores incorrectos");return "LAB DB y claves LAB"});
+  // Integration tests exercise actual application functions and rendered HTML.
+  await run("13","Plan → Idea Hard → Plan: ítems","El ítem Hard sigue en resultados del plan",()=>{
+    current=main;history=[];awarded=[];score={general:5};
+    saveExec("final",final.id,null);
+    startDeep(idea.id);
+    chooseIdeaLevel("soft","up",null);
+    chooseIdeaLevel("medium","up","soft");
+    chooseIdeaLevel("hard","yes","medium");
+    let before=ideaNewItems().map(x=>x.item.id);
+    assert(before.includes(item2.id),"La Idea no otorgó el ítem Hard");
+    resumeFinalResult();
+    let after=finalItems(final,main.id).map(x=>x.item.id);
+    assert(current.id===main.id,"No regresó al plan");
+    assert(after.includes(item2.id),"Ítem Hard perdido al volver");
+    return "Idea: "+before.join(",")+"; plan: "+after.join(",");
+  });
+  await run("14","Plan → Idea → Ítems → Plan → Idea","El botón de ítems sigue visible",()=>{
+    const last=JSON.parse(localStorage.getItem(LAST_IDEA_KEY)||"null");
+    assert(last?.planId===idea.id,"No quedó Idea reciente");
+    reopenLastIdea();
+    assert(current.id===idea.id,"No reabrió Idea");
+    const first=document.getElementById("app").innerHTML;
+    assert(first.includes("showIdeaItems"),"Botón ausente al reabrir");
+    showIdeaItems(idea.id,last.level);
+    assert(document.getElementById("app").textContent.includes(item2.name),"Pantalla de ítems vacía");
+    showIdeaLevelResult(idea.id,last.level);
+    assert(document.getElementById("app").innerHTML.includes("showIdeaItems"),"Botón desapareció después de volver");
+    return "Botón y contenido conservados";
+  });
+  await run("15","Decisión omitida de otro plan","Suma 3 puntos y otorga ítem sin recorrido",()=>{
+    current=main;score={general:0};awarded=[];history=[];
+    applyAutoResolutions(main,{autoResolve:[{planId:secondary.id,decisionId:"lab-d2",optionId:"lab-o2"}]});
+    assert(score.general===3,"Puntos: "+score.general);
+    assert(awarded.some(x=>x.planId===secondary.id&&x.itemId===item2.id),"No otorgó ítem externo");
+    assert(history.length===0,"Agregó una decisión al recorrido");
+    return "3 puntos; "+awarded.length+" ítem; 0 decisiones visibles";
+  });
+  await run("16","Ruleta: descartar y aceptar","Giros consumidos; Idea descartada sin premios",()=>{
+    current=main;score={general:10};awarded=[];history=[];
+    localStorage.removeItem(SPIN_USAGE_KEY);
+    randomIdea(final.id);
+    assert(rouletteRemaining(final)===1,"Primer giro incorrecto");
+    assert(awarded.length===0,"Ruleta otorgó premios antes de aceptar");
+    randomIdea(final.id,idea.id);
+    assert(rouletteRemaining(final)===0,"Segundo giro incorrecto");
+    assert(awarded.length===0,"Idea descartada otorgó premios");
+    assert(!document.getElementById("app").innerHTML.includes("Prefiero otra"),"Permite girar sin giros");
+    return "2 giros; 0 premios de candidatas";
+  });
+  await run("17","Clonado: rutas y decisiones omitidas","IDs internos remapeados, externos preservados",()=>{
+    current=main;
+    const o=main.decisions[0].options[0];
+    o.next="FINAL:"+final.id;
+    o.autoResolve=[{planId:main.id,decisionId:"lab-d1",optionId:"lab-o1"},{planId:secondary.id,decisionId:"lab-d2",optionId:"lab-o2"}];
+    // clonePlan also calls save() and showHome(); disable only the LAB database write during this test.
+    const prevSave=save,prevHome=showHome;
+    try{save=()=>{};showHome=()=>{};clonePlan(main.id)}finally{save=prevSave;showHome=prevHome}
+    const cp=db.plans.find(x=>x.name===main.name+" (copia)");
+    assert(cp,"No generó copia");
+    const co=cp.decisions[0].options[0];
+    assert(cp.id!==main.id&&cp.decisions[0].id!==main.decisions[0].id,"No remapeó IDs");
+    assert(co.next==="FINAL:"+final.id,"Perdió finalización externa");
+    assert(co.autoResolve[0].planId===cp.id&&co.autoResolve[0].decisionId===cp.decisions[0].id,"No remapeó referencia interna");
+    assert(co.autoResolve[1].planId===secondary.id&&co.autoResolve[1].decisionId==="lab-d2","Alteró referencia externa");
+    return "IDs internos nuevos; referencias externas intactas";
+  });
+  await run("18","Persistencia IndexedDB aislada","Lectura/escritura solo en base temporal LAB",async()=>{
+    const dbname="DecisionPlanLabTestTempDB_v020";
+    const open=()=>new Promise((res,rej)=>{const r=indexedDB.open(dbname,1);r.onupgradeneeded=()=>r.result.createObjectStore("fixture");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+    const temp=await open();
+    try{
+      await new Promise((res,rej)=>{const t=temp.transaction("fixture","readwrite");t.objectStore("fixture").put({value:"LAB only"},"probe");t.oncomplete=res;t.onerror=()=>rej(t.error)});
+      const value=await new Promise((res,rej)=>{const t=temp.transaction("fixture");const r=t.objectStore("fixture").get("probe");r.onsuccess=()=>res(r.result?.value);r.onerror=()=>rej(r.error)});
+      assert(value==="LAB only","Lectura incorrecta: "+value);
+      return value;
+    }finally{temp.close();indexedDB.deleteDatabase(dbname)}
+  });
+  cases.push({id:"19",name:"Editor: actualización y scroll",status:"SKIP",expected:"Posición conservada tras agregar opción",actual:"Pendiente de prueba E2E en Safari",error:null});
+ }finally{
+  db=original.db;current=original.current;history=original.history;awarded=original.awarded;score=original.score;uiMode=original.uiMode;
+  for(const k of keys){const v=originalStorage[k];if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}
+  document.getElementById("app").innerHTML=originalHtml;
+  labBusy=false;if(btn)btn.disabled=false;
+ }
+ const passed=cases.filter(c=>c.status==="PASS").length,failed=cases.filter(c=>c.status==="FAIL").length,skipped=cases.filter(c=>c.status==="SKIP").length;
+ labReport={format:"DecisionPlanLabTestReport",labVersion:LAB_VERSION,engineVersion:ENGINE_VERSION,timestamp:new Date().toISOString(),origin:location.origin,path:location.pathname,storage:"LAB keys restored after tests; scratch IndexedDB",testData:"synthetic fixtures only",summary:{total:cases.length,passed,failed,skipped},tests:cases,notes:["La prueba 19 se registra como SKIP (pendiente de E2E); no es una falla confirmada del editor.","Las pruebas no escriben en DecisionPlanDB ni utilizan datos de producción.","Las pruebas 13-17 ejecutan funciones reales con fixtures; no sustituyen un recorrido manual completo en Safari."]};
+ result.innerHTML=`<b>${passed}/${cases.length} aprobadas · ${failed} no aprobadas</b>`+cases.map(c=>`<div style="margin-top:8px">${c.status==="PASS"?"✅":c.status==="SKIP"?"⏭️":"❌"} ${esc(c.id+" · "+c.name)}${c.status==="FAIL"?`<div class="muted">${esc(c.actual)}</div>`:""}</div>`).join("");
+ exportBtn.disabled=false;
 }
 function exportLabReport(){
  if(!labReport)return;
  const blob=new Blob([JSON.stringify(labReport,null,2)],{type:"application/json"});
  const url=URL.createObjectURL(blob),a=document.createElement("a");
- a.href=url;a.download="decision-plan-LAB-results-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+ a.href=url;a.download="decision-plan-LAB-v0.2.0-results-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 </script>
 </body></html>

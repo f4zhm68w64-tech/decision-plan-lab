@@ -1,24 +1,16 @@
-# Decision Plan — LAB v0.1.0
+# Decision Plan LAB v0.2.0
+Motor basado en producción v5.13.3. **No subir a producción**.
 
-Laboratorio independiente basado en el motor de Decision Plan v5.13.3.
+## Publicación
+Actualizar únicamente el repositorio `decision-plan-lab` con los cinco archivos del ZIP. Mantener `decision-plan` intacto.
 
-## Instalación
-1. Crear repositorio público nuevo `decision-plan-lab` en GitHub (no subir estos archivos al repositorio `decision-plan`).
-2. Subir a la raíz los archivos de este ZIP.
-3. Settings → Pages → Deploy from a branch → `main` / `(root)`.
-4. Abrir `https://f4zhm68w64-tech.github.io/decision-plan-lab/`.
+## Aislamiento
+Base de datos LAB `DecisionPlanLabDB`, clave `decision_planner_lab_v1`; sesiones `dplab_*`; caché `decision-plan-lab-*`; SW de la ruta `/decision-plan-lab/`.
+Los tests usan fixtures ficticios en memoria, restauran las claves LAB modificadas y utilizan una base temporal independiente para comprobar IndexedDB. No se accede a `DecisionPlanDB` ni a los datos de producción.
 
-## Identificación y aislamiento
-- Cabecera violeta `🧪 LAB`, aviso persistente.
-- IndexedDB `DecisionPlanLabDB` / clave `decision_planner_lab_v1`.
-- localStorage `dplab_*`, cache `decision-plan-lab-*`, Service Worker en `/decision-plan-lab/`.
-- El borrado general está deshabilitado.
-- No importar backups de producción al LAB. Usar solo datos ficticios.
-- Aunque GitHub Pages comparte origen para los repositorios de una cuenta, el laboratorio separa explícitamente todos los identificadores de almacenamiento.
+## Pruebas
+19 verificaciones, incluidas pruebas de ejecución Plan→Idea→Plan, retorno a ítems, resoluciones omitidas entre planes, ruleta, clonado y persistencia de base temporal.
+**La prueba 19 se marca como SKIP / pendiente:** scroll del editor requiere automatización E2E real. No significa que se haya observado un fallo en el editor.
+Los resultados incluyen `expected`, `actual` y `error` (stack cuando aplica), además de resumen y versión. Exportar JSON desde LAB y compartirlo para diagnóstico.
 
-## Pruebas y reporte
-Pulsar `Ejecutar pruebas` y después `Exportar resultados JSON`. Enviar el JSON descargado para analizar resultados.
-Las 12 pruebas iniciales usan fixtures en memoria, no escriben en IndexedDB ni alteran datos reales. **No constituyen pruebas E2E**; en próximas iteraciones agregar casos de navegación y persistencia específicos.
-
-## Seguridad de despliegue
-Nunca reemplazar archivos del repositorio de producción con este ZIP. El ZIP LAB no modifica producción automáticamente.
+Las pruebas son de integración en la aplicación, pero no sustituyen navegación E2E en Safari. No importar backups reales al laboratorio.
