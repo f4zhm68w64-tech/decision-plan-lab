@@ -1,16 +1,15 @@
-# Decision Plan LAB v0.2.0
-Motor basado en producción v5.13.3. **No subir a producción**.
+# Decision Plan LAB 1.0 — batería integral
+Motor de producción v5.13.3, aislado. **NO subir a `decision-plan`**.
 
 ## Publicación
-Actualizar únicamente el repositorio `decision-plan-lab` con los cinco archivos del ZIP. Mantener `decision-plan` intacto.
+Subir los cinco archivos únicamente al repositorio `decision-plan-lab`. En la web, pulsar «Ejecutar batería completa» y «Exportar resultados JSON».
+
+## Cobertura
+36 escenarios: funciones y flujos de Ideas, ítems, tags, puntajes, rutas, ruleta, clonación, editor, referencias, persistencia y seguridad básica de aislamiento.
+La prueba 36 (scroll visual real) se informa como SKIP, no como PASS ni FAIL. Las pruebas de backup 31/32 son de disponibilidad de funciones, **no** verifican aún un round-trip cifrado completo. La prueba 29 verifica la presencia de CSS, no su representación visual. El resto ejecuta lógica real con fixtures.
 
 ## Aislamiento
-Base de datos LAB `DecisionPlanLabDB`, clave `decision_planner_lab_v1`; sesiones `dplab_*`; caché `decision-plan-lab-*`; SW de la ruta `/decision-plan-lab/`.
-Los tests usan fixtures ficticios en memoria, restauran las claves LAB modificadas y utilizan una base temporal independiente para comprobar IndexedDB. No se accede a `DecisionPlanDB` ni a los datos de producción.
+No usar datos reales ni importar backups de producción. Fixtures en memoria, restauración de claves LAB al finalizar y base IndexedDB temporal. El LAB no modifica la base de producción.
 
-## Pruebas
-19 verificaciones, incluidas pruebas de ejecución Plan→Idea→Plan, retorno a ítems, resoluciones omitidas entre planes, ruleta, clonado y persistencia de base temporal.
-**La prueba 19 se marca como SKIP / pendiente:** scroll del editor requiere automatización E2E real. No significa que se haya observado un fallo en el editor.
-Los resultados incluyen `expected`, `actual` y `error` (stack cuando aplica), además de resumen y versión. Exportar JSON desde LAB y compartirlo para diagnóstico.
-
-Las pruebas son de integración en la aplicación, pero no sustituyen navegación E2E en Safari. No importar backups reales al laboratorio.
+## Interpretación
+PASS significa que el escenario específico pasó; no certifica la aplicación completa. FAIL incluye esperado, observado y stack. SKIP requiere automatización adicional. No se ha ejecutado todavía esta batería en Safari.
