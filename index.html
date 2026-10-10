@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#111827">
+<title>LAB — Decision Plan</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f5f6f8}
+*{box-sizing:border-box} body{margin:0} button,input,textarea,select{font:inherit}
+header{position:sticky;top:0;background:#111827;color:white;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;z-index:5}
+header{background:#65318c}header b{font-size:19px}.wrap{max-width:780px;margin:auto;padding:16px 16px calc(30px + env(safe-area-inset-bottom))}
+.card{background:white;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 1px 7px #0001}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.btn{border:0;border-radius:12px;padding:11px 14px;background:#e8ebf0;color:#111827;font-weight:650}.primary{background:#111827;color:white}.danger{background:#fee2e2;color:#991b1b}
+input,textarea,select{width:100%;border:1px solid #d7dce3;border-radius:11px;padding:10px;background:white}label{display:block;font-size:13px;font-weight:700;margin:10px 0 5px}
+.muted{color:#667085;font-size:14px}.hide{display:none!important}.tabs{display:flex;gap:8px;margin-top:10px}.tabs .btn{flex:1}
+.choice{width:100%;text-align:left;border:0;background:white;border-radius:18px;padding:0;overflow:hidden;box-shadow:0 1px 8px #0002;margin:12px 0}
+.choice img,.hero{display:block;width:100%;max-height:280px;object-fit:cover}.choice .ct{padding:15px;font-size:18px;font-weight:700}
+.item img{display:block;width:100%;height:auto;max-height:420px;object-fit:contain;object-position:center;border-radius:13px}.pill{font-size:12px;background:#eef2ff;padding:4px 8px;border-radius:999px}
+hr{border:0;border-top:1px solid #eceff3;margin:16px 0}h2,h3{margin:4px 0 10px}
+.topback{display:flex;justify-content:flex-end;margin-bottom:12px}.topback .btn{margin:0}</style><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon.svg"></head>
+<body>
+
+<header id="topbar"><b>🧪 LAB — Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.1.0 · Motor 5.13.3</span> <button id="updateAppBtn" class="btn" style="padding:5px 8px;font-size:12px;margin-left:8px" onclick="forceAppUpdate()">↻ Actualizar app</button><div class="tabs"><button class="btn primary" onclick="goToAdmin()">Planes</button><button class="btn primary" onclick="goToExecution()">▶ Modo Ejecución</button><button class="btn" onclick="configureAdminPin()">🔐 PIN</button></div></header><div style="background:#f4e8ff;color:#4d176a;text-align:center;padding:10px;font-weight:800;border-bottom:2px solid #8d4cb4">🧪 ENTORNO LAB · DATOS FICTICIOS · NO ES PRODUCCIÓN</div><div id="labtests" class="wrap"><div class="card" style="border:2px solid #8d4cb4"><h2>🧪 Pruebas del laboratorio</h2><p class="muted">Ejecuta pruebas sobre datos sintéticos en memoria. No modifica ni los datos del laboratorio ni los de producción.</p><div class="row"><button class="btn primary" onclick="runLabTests()">Ejecutar pruebas</button><button class="btn" id="labExport" onclick="exportLabReport()" disabled>Exportar resultados JSON</button></div><div id="labResults" class="muted" style="margin-top:12px">Todavía no se ejecutaron pruebas.</div></div></div><div id="app" class="wrap"></div>
+<script>
+const KEY="decision_planner_lab_v1";
+let db={plans:[],finalizations:[]}, current=null, history=[], awarded=[];
+let uiMode=localStorage.getItem("dplab_ui_mode")||"admin";
+const SESSION_KEY="dplab_execution_session_v1",PIN_KEY="dplab_admin_pin_v1";let score={general:0};
+function normScore(s){return {general:Number(s?.general)||0}}
+function addScore(v){score.general+=(Number(v)||0)}
+function eligibleByScore(x){let a=x?.availability;if(!a||a.enabled!==true)return true;let n=score.general;return (a.min==null||a.min===""||n>=Number(a.min))&&(a.max==null||a.max===""||n<=Number(a.max))}
+
+function saveExec(screen="decision",finalId=null,nextDecisionId=null){if(current)localStorage.setItem(SESSION_KEY,JSON.stringify({planId:current.id,history,awarded,score:normScore(score),screen,finalId,nextDecisionId}))}
+function getExec(){try{return JSON.parse(localStorage.getItem(SESSION_KEY)||"null")}catch(e){return null}}
+function closeExec(){if(!confirm("¿Cerrar la sesión de ejecución actual? Se eliminará únicamente su recorrido e ítems obtenidos; los planes no se modifican."))return;localStorage.removeItem(SESSION_KEY);localStorage.removeItem("dplab_last_idea_v1");localStorage.removeItem("dplab_idea_return_v1");localStorage.removeItem(IDEA_AWARD_BASE_KEY);localStorage.removeItem(SPIN_USAGE_KEY);history=[];awarded=[];score={general:0};current=null;showRunHome()}
+function configureAdminPin(){let old=localStorage.getItem(PIN_KEY);if(old){let x=prompt("PIN de administración actual");if(x===null)return;if(x!==old)return alert("PIN incorrecto.")}let a=prompt("Nuevo PIN de administración (4 a 8 dígitos)");if(a===null)return;if(!/^\d{4,8}$/.test(a))return alert("El PIN debe tener entre 4 y 8 dígitos.");let b=prompt("Repetí el nuevo PIN");if(b!==a)return alert("Los PIN no coinciden.");localStorage.setItem(PIN_KEY,a);alert("PIN guardado.")}
+function toggleAdministration(){
+ if(uiMode!=="admin")return;
+ let enabled=localStorage.getItem("dplab_admin_protection_v1")!=="off";
+ if(enabled){
+  let pin=localStorage.getItem(PIN_KEY);
+  if(!pin){alert("Primero configurá un PIN de administración.");configureAdminPin();pin=localStorage.getItem(PIN_KEY);if(!pin){showHome();return}}
+  let x=prompt("PIN de administración para desactivar la protección");if(x===null){showHome();return}if(x!==pin){alert("PIN incorrecto.");showHome();return}
+  localStorage.setItem("dplab_admin_protection_v1","off");showHome();
+ }else{localStorage.setItem("dplab_admin_protection_v1","on");showHome()}
+}
+function goToExecution(){setUIMode("run")}
+
+function requestAdmin(){
+ if(localStorage.getItem("dplab_admin_protection_v1")==="off")return setUIMode("admin");
+ let pin=localStorage.getItem(PIN_KEY);
+ if(!pin){if(confirm("Todavía no configuraste un PIN. ¿Volver a Administración?"))setUIMode("admin");return}
+ let x=prompt("PIN de administración");if(x===null)return;if(x!==pin)return alert("PIN incorrecto.");setUIMode("admin")
+}
+function goToAdmin(){return requestAdmin()}
+
+function resumeExec(){let s=getExec();if(!s)return;let p=db.plans.find(x=>x.id===s.planId);if(!p){localStorage.removeItem(SESSION_KEY);return showRunHome()}current=p;history=Array.isArray(s.history)?s.history:[];awarded=Array.isArray(s.awarded)?s.awarded:[];score=normScore(s.score);if(s.screen==="final")return results(s.finalId||null);let next=s.nextDecisionId||current.start;if(!next)return alert("No se encontró una decisión para continuar.");setExecutionMode(true);return renderPlay(next)}
+function setUIMode(mode){uiMode=mode;localStorage.setItem("dplab_ui_mode",mode);mode==="run"?showRunHome():showHome()}
+function showRunHome(){setExecutionMode(false);let s=getExec(),visible=db.plans.filter(p=>planType(p)==="principal"&&p.showInPlayer!==false);$('#app').innerHTML=`<div class=card><h2>Ejecutar</h2>${s?`<button class=choice onclick="resumeExec()"><div class=ct>Continuar ejecución anterior</div></button>`:`<div class=muted>Elegí un plan para comenzar.</div>`}</div>`+(!s&&visible.length?visible.map(p=>`<button class=choice onclick="play('${p.id}')"><div class=ct>${esc(p.name)}</div></button>`).join(""):"")+`<div class=card style="margin-top:28px">${s?`<button class=btn onclick="closeExec()">Cerrar sesión de ejecución</button>`:""} <button class=btn onclick="requestAdmin()">⚙ Administración</button></div>`}
+function returnToAdmin(){requestAdmin()}
+
+function idbOpen(){return new Promise((resolve,reject)=>{const r=indexedDB.open("DecisionPlanLabDB",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function idbLoad(){const d=await idbOpen();return new Promise((resolve,reject)=>{const r=d.transaction("kv").objectStore("kv").get(KEY);r.onsuccess=()=>resolve(r.result||{plans:[]});r.onerror=()=>reject(r.error)})}
+async function idbSave(){const d=await idbOpen();return new Promise((resolve,reject)=>{const r=d.transaction("kv","readwrite").objectStore("kv").put(db,KEY);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)})}
+const $=s=>document.querySelector(s), uid=()=>crypto.randomUUID();
+function save(){idbSave()}
+function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function fileData(inp,cb){let f=inp.files[0]; if(!f)return cb(''); let r=new FileReader();r.onload=()=>cb(r.result);r.readAsDataURL(f)}
+function setExecutionMode(on){let bar=document.getElementById("topbar");if(bar)bar.style.display=on?"none":""}
+function hiddenItemLibrary(){if(!Array.isArray(db.hiddenItems))db.hiddenItems=[];return db.hiddenItems}
+function itemTagLibrary(){if(!Array.isArray(db.itemTags))db.itemTags=[];return db.itemTags}
+function tagName(id){return itemTagLibrary().find(t=>t.id===id)?.name||"Sin tag"}
+function availableItemsForPlan(p){let seen=new Set(),out=[];[...hiddenItemLibrary(),...(p.items||[])].forEach(i=>{if(i&&!seen.has(i.id)){seen.add(i.id);out.push(i)}});return out}
+function findAwardItem(id,plan){return hiddenItemLibrary().find(i=>i.id===id)||(plan?.items||[]).find(i=>i.id===id)}
+function editorAwards(x){if(Array.isArray(x.itemAwards))return x.itemAwards.map(a=>({itemId:a?.itemId||"",tagId:a?.tagId||""}));return optionItemIds(x).map(itemId=>({itemId,tagId:""}))}
+function normalizeAwards(x){return editorAwards(x).filter(a=>a.itemId)}
+function migrateItemTags(){let changed=false,tags=itemTagLibrary(),byName=new Map(tags.map(t=>[String(t.name||"").trim().toLowerCase(),t]));let tagForType=type=>{let n=String(type||"").trim();if(!n)return "";let k=n.toLowerCase(),t=byName.get(k);if(!t){t={id:uid(),name:n};tags.push(t);byName.set(k,t);changed=true}return t.id};let allItems=[...hiddenItemLibrary()];db.plans.forEach(p=>(p.items||[]).forEach(i=>allItems.push(i)));let oldTag=new Map();allItems.forEach(i=>{if(i.type){oldTag.set(i.id,tagForType(i.type));delete i.type;changed=true}});db.plans.forEach(p=>{(p.decisions||[]).forEach(d=>(d.options||[]).forEach(o=>{if(!Array.isArray(o.itemAwards)){o.itemAwards=optionItemIds(o).map(itemId=>({itemId,tagId:oldTag.get(itemId)||""}));changed=true}}));if(planType(p)==="deep"){let L=ensureIdeaLevels(p);["soft","medium","hard"].forEach(k=>["yes","no","up"].forEach(a=>{let x=L[k];if(!x.actionAwards)x.actionAwards={};if(!Array.isArray(x.actionAwards[a])){x.actionAwards[a]=((x.actionItems&&x.actionItems[a])||[]).map(itemId=>({itemId,tagId:oldTag.get(itemId)||""}));changed=true}else{x.actionAwards[a].forEach(r=>{if(!r.tagId&&oldTag.get(r.itemId)){r.tagId=oldTag.get(r.itemId);changed=true}})}}))}});if(changed)save()}
+function listHiddenItems(){setExecutionMode(false);let a=hiddenItemLibrary();$('#app').innerHTML=`<div class=card><h2>Ítems ocultos</h2><div class=topback><button class=btn onclick="showHome()">← Volver</button></div><div class=row><button class="btn primary" onclick="newHiddenItem()">+ Ítem oculto</button><button class=btn onclick="listItemTags()">Administrar tags</button></div></div>`+(a.length?a.map(i=>`<div class=card><b>${esc(i.name||"Ítem sin nombre")}</b><div class=row style="margin-top:10px"><button class=btn onclick="editHiddenItem('${i.id}')">Editar</button><button class="btn danger" onclick="deleteHiddenItem('${i.id}')">Eliminar</button></div></div>`).join(""):`<div class=card><div class=muted>Aún no hay ítems ocultos.</div></div>`)}
+function newHiddenItem(){let i={id:uid(),name:"Nuevo ítem",description:"",image:""};hiddenItemLibrary().push(i);save();editHiddenItem(i.id)}
+function editHiddenItem(id){let i=hiddenItemLibrary().find(x=>x.id===id);if(!i)return;$('#app').innerHTML=`<div class=card><h2>Ítem oculto</h2><label>Nombre</label><input id=hn value="${esc(i.name||"")}"><label>Descripción</label><textarea id=hd>${esc(i.description||"")}</textarea><label>Imagen</label><input id=him type=file accept="image/*">${i.image?`<img class=hero src="${i.image}"><div class=row style="margin-top:8px"><button class="btn danger" onclick="removeHiddenItemImage('${id}')">Quitar imagen</button></div>`:""}<div class=row style="margin-top:14px"><button class="btn primary" onclick="saveHiddenItem('${id}')">Guardar</button><button class=btn onclick="listHiddenItems()">Cancelar</button><button class="btn danger" onclick="deleteHiddenItem('${id}')">Eliminar ítem</button></div></div>`}
+function saveHiddenItem(id){let i=hiddenItemLibrary().find(x=>x.id===id);if(!i)return;i.name=$('#hn').value;i.description=$('#hd').value;fileData($('#him'),x=>{if(x)i.image=x;save();listHiddenItems()})}
+function removeHiddenItemImage(id){let i=hiddenItemLibrary().find(x=>x.id===id);if(!i)return;i.name=$('#hn').value;i.description=$('#hd').value;i.image="";save();editHiddenItem(id)}
+function deleteHiddenItem(id){let used=[];db.plans.forEach(p=>{(p.decisions||[]).forEach(d=>(d.options||[]).forEach(o=>{if(normalizeAwards(o).some(a=>a.itemId===id))used.push(p.name||"Plan")}));if(planType(p)==="deep"){let L=ensureIdeaLevels(p);["soft","medium","hard"].forEach(k=>["yes","no","up"].forEach(a=>{if(((L[k].actionAwards||{})[a]||[]).some(x=>x.itemId===id))used.push(p.name||"Idea")}))}});let msg=used.length?`Este ítem está asignado en: ${[...new Set(used)].join(", ")}. Al eliminarlo, esas asignaciones dejarán de otorgarlo. ¿Continuar?`:"¿Eliminar este ítem oculto?";if(!confirm(msg))return;db.plans.forEach(p=>{(p.decisions||[]).forEach(d=>(d.options||[]).forEach(o=>{o.itemAwards=normalizeAwards(o).filter(a=>a.itemId!==id);o.itemIds=optionItemIds(o).filter(x=>x!==id);o.itemId=""}));if(planType(p)==="deep"){let L=ensureIdeaLevels(p);["soft","medium","hard"].forEach(k=>["yes","no","up"].forEach(a=>{if(L[k].actionAwards)L[k].actionAwards[a]=(L[k].actionAwards[a]||[]).filter(x=>x.itemId!==id)}))}});db.hiddenItems=hiddenItemLibrary().filter(i=>i.id!==id);save();listHiddenItems()}
+function listItemTags(){setExecutionMode(false);let a=itemTagLibrary();$('#app').innerHTML=`<div class=card><h2>Tags de ítems</h2><div class=topback><button class=btn onclick="listHiddenItems()">← Volver</button></div><div class=row><button class="btn primary" onclick="newItemTag()">+ Tag</button></div><div class=muted style="margin-top:10px">Los tags se asignan cuando una opción otorga un ítem. Eliminar un tag conserva el ítem y deja esas asignaciones sin tag.</div></div>`+(a.length?a.map(t=>`<div class=card><b>${esc(t.name||"Tag")}</b><div class=row style="margin-top:10px"><button class=btn onclick="editItemTag('${t.id}')">Renombrar</button><button class="btn danger" onclick="deleteItemTag('${t.id}')">Eliminar</button></div></div>`).join(""):`<div class=card><div class=muted>Aún no hay tags.</div></div>`)}
+function newItemTag(){let t={id:uid(),name:"Nuevo tag"};itemTagLibrary().push(t);save();editItemTag(t.id)}
+function editItemTag(id){let t=itemTagLibrary().find(x=>x.id===id);if(!t)return;$('#app').innerHTML=`<div class=card><h2>Tag</h2><label>Nombre</label><input id=tagname value="${esc(t.name||"")}"><div class=row style="margin-top:14px"><button class="btn primary" onclick="saveItemTag('${id}')">Guardar</button><button class=btn onclick="listItemTags()">Cancelar</button></div></div>`}
+function saveItemTag(id){let t=itemTagLibrary().find(x=>x.id===id);if(!t)return;let n=$('#tagname').value.trim();if(!n)return alert("El tag necesita un nombre.");if(itemTagLibrary().some(x=>x.id!==id&&String(x.name||"").trim().toLowerCase()===n.toLowerCase()))return alert("Ya existe un tag con ese nombre.");t.name=n;save();listItemTags()}
+function deleteItemTag(id){let t=itemTagLibrary().find(x=>x.id===id);if(!t||!confirm(`¿Eliminar el tag “${t.name}”? Los ítems otorgados con este tag pasarán a “Sin tag”.`))return;db.plans.forEach(p=>{(p.decisions||[]).forEach(d=>(d.options||[]).forEach(o=>{o.itemAwards=normalizeAwards(o).map(a=>({...a,tagId:a.tagId===id?"":a.tagId}))}));if(planType(p)==="deep"){let L=ensureIdeaLevels(p);["soft","medium","hard"].forEach(k=>["yes","no","up"].forEach(a=>((L[k].actionAwards||{})[a]||[]).forEach(x=>{if(x.tagId===id)x.tagId=""})))}});awarded.forEach(a=>{if(a&&typeof a!=="string"&&a.tagId===id)a.tagId=""});db.itemTags=itemTagLibrary().filter(x=>x.id!==id);saveExec("decision",null,null);save();listItemTags()}
+function awardRowsEditor(prefix,awards,items,did=null,oid=null){awards=Array.isArray(awards)?awards:[];let tags=itemTagLibrary();return `<div id="${prefix}_rows">${awards.map((a,n)=>`<div class=card style="margin-top:8px"><label>Ítem</label><select id="${prefix}_item_${n}"><option value="">Seleccionar…</option>${items.map(i=>`<option value="${i.id}" ${a.itemId===i.id?"selected":""}>${esc(i.name||"Ítem")}</option>`).join("")}</select><label>Tag al otorgarlo</label><select id="${prefix}_tag_${n}"><option value="" ${!a.tagId?"selected":""}>Sin tag</option>${tags.map(t=>`<option value="${t.id}" ${a.tagId===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}</select>${did&&oid?`<div class=row style="margin-top:8px"><button class="btn danger" onclick="removeOptionAward(\'${did}\',\'${oid}\',${n})">Quitar</button></div>`:""}</div>`).join("")}</div>`}
+function readAwardRows(prefix,count){let out=[];for(let n=0;n<count;n++){let i=document.getElementById(`${prefix}_item_${n}`),t=document.getElementById(`${prefix}_tag_${n}`);out.push({itemId:i?.value||"",tagId:t?.value||""})}return out}
+
+function showHome(){
+ setExecutionMode(false);if(!db.finalizations)db.finalizations=[];if(uiMode==="run")return showRunHome();
+ let group=(t,title)=>`<div class=card><h2>${title}</h2><button class="btn primary" onclick="newPlanOfType('${t}')">+ Nuevo</button></div>`+
+ (db.plans.filter(p=>planType(p)===t).length?db.plans.filter(p=>planType(p)===t).map(p=>`<div class=card><b>${esc(p.name)}</b><div class=muted>${p.decisions.length} decisiones</div><div class=row style="margin-top:10px"><button class=btn onclick="openBuilder('${p.id}')">Editar</button><button class=btn onclick="clonePlan('${p.id}')">Clonar</button><button class="btn danger" onclick="delPlan('${p.id}')">Eliminar</button></div></div>`).join(""):`<div class=card><div class=muted>No hay elementos.</div></div>`);
+ $('#app').innerHTML=group("principal","Planes principales")+group("secondary","Planes secundarios")+`<div class=card><h2>Ideas</h2><button class="btn primary" onclick="listIdeas()">Administrar ideas</button></div>`+
+ `<div class=card><h2>Finalizaciones</h2><button class="btn primary" onclick="listFinalizations()">Administrar finalizaciones</button></div>`+
+ `<div class=card><h2>Ítems ocultos</h2><div class=row><button class="btn primary" onclick="listHiddenItems()">Administrar ítems ocultos</button><button class=btn onclick="listItemTags()">Administrar tags</button></div></div>`+
+ `<div class=card><h2>Administración</h2><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input type=checkbox style="width:auto" ${localStorage.getItem("dplab_admin_protection_v1")!=="off"?"checked":""} onchange="toggleAdministration()"> Protección de Administración</label><div class=muted style="margin-top:8px">${localStorage.getItem("dplab_admin_protection_v1")==="off"?"Desactivada: Planes → Ejecución sin PIN.":"Activada: Planes → Ejecución requiere PIN."}</div><div class=row style="margin-top:10px"><button class=btn onclick="configureAdminPin()">Gestionar PIN</button></div></div>`+
+ `<div class=card><h2>Backup</h2><div class=row><button class="btn primary" onclick="exportEncrypted()">Crear backup cifrado</button><button class=btn onclick="exportAll()">Crear backup JSON</button><label class=btn>Restaurar backup<input type=file accept=".dpbackup,.json,application/json,application/octet-stream" style="display:none" onchange="importAll(this)"></label></div><div class=muted style="margin-top:10px">El backup cifrado usa una contraseña que no se guarda en la aplicación. Si la perdés, no se puede recuperar el contenido.</div></div>`+`<div class=card><h2>Privacidad y datos</h2><p class=muted>Elimina los datos locales de Decision Plan en este navegador. Exportá un backup antes de continuar.</p><button class="btn danger" onclick="eraseAllLocalData()">Borrar todo</button></div>`;
+}
+function listIdeas(){setExecutionMode(false);let ideas=db.plans.filter(p=>planType(p)==="deep");$('#app').innerHTML=`<div class=card><div class=topback><button class=btn onclick="showHome()">← Volver</button></div><h2>Ideas</h2><button class="btn primary" onclick="newPlanOfType('deep')">+ Nueva Idea</button></div>`+(ideas.length?ideas.map(p=>`<div class=card><b>${esc(p.name)}</b><div class=row style="margin-top:10px"><button class=btn onclick="openBuilder('${p.id}')">Editar</button><button class=btn onclick="clonePlan('${p.id}');listIdeas()">Clonar</button><button class="btn danger" onclick="delPlan('${p.id}')">Eliminar</button></div></div>`).join(""):`<div class=card><div class=muted>No hay Ideas.</div></div>`)}
+function planType(p){return p.type||"principal"}
+function planTypeLabel(t){return t==="secondary"?"Plan secundario":t==="deep"?"Profundizar tema":"Plan principal"}
+function newPlanOfType(t){let p={id:uid(),name:t==="deep"?"Nueva Idea":"Nuevo plan",type:t,hideNameInPlayer:true,showInPlayer:t==="principal",start:null,decisions:[],items:[]};if(t==="deep")ensureIdeaLevels(p);db.plans.push(p);save();openBuilder(p.id)}
+function newPlan(){let p={id:uid(),name:"Nuevo plan",type:"principal",hideNameInPlayer:true,showInPlayer:true,start:null,decisions:[],items:[]};db.plans.push(p);save();editPlan(p.id)}
+function editPlan(id){current=db.plans.find(p=>p.id===id); renderBuilder()}
+function ensureIdeaLevels(p){
+ if(!p.ideaLevels)p.ideaLevels={
+  soft:{text:p.ideaDefinition||"",yes:"Sí",no:"No",up:"Subir",result:""},
+  medium:{text:"",yes:"Sí",no:"No",up:"Subir",result:""},
+  hard:{text:"",yes:"Sí",no:"No",result:""}
+ };
+ ["soft","medium","hard"].forEach(k=>{
+  if(!p.ideaLevels[k])p.ideaLevels[k]={text:"",yes:"Sí",no:"No",...(k!=="hard"?{up:"Subir"}:{}),result:""};
+  if(p.ideaLevels[k].result==null)p.ideaLevels[k].result="";
+  if(!p.ideaLevels[k].actionItems||typeof p.ideaLevels[k].actionItems!=="object")p.ideaLevels[k].actionItems={yes:[],no:[],up:[]};
+  if(!p.ideaLevels[k].actionAwards||typeof p.ideaLevels[k].actionAwards!=="object")p.ideaLevels[k].actionAwards={};
+  ["yes","no","up"].forEach(a=>{if(!Array.isArray(p.ideaLevels[k].actionItems[a]))p.ideaLevels[k].actionItems[a]=[];if(!Array.isArray(p.ideaLevels[k].actionAwards[a]))p.ideaLevels[k].actionAwards[a]=p.ideaLevels[k].actionItems[a].map(itemId=>({itemId,tagId:""}))});
+ });
+ return p.ideaLevels;
+}
+function renderIdeaBuilder(){
+ let L=ensureIdeaLevels(current);
+ $('#app').innerHTML=`<div class=card><h2>Idea</h2><div class=topback><button class=btn onclick="showHome()">← Volver</button></div><label>Nombre de la Idea</label><input id=idea_name value="${esc(current.name||"")}"><div class=muted style="margin-top:8px">R1 siempre entra por Soft. “Subir” acepta el nivel actual y continúa. Un “No” en Medium/Hard muestra el resultado del último nivel aceptado.</div></div>
+ ${ideaLevelEditor("soft","Soft",L.soft,true)}
+ ${ideaLevelEditor("medium","Medium",L.medium,true)}
+ ${ideaLevelEditor("hard","Hard",L.hard,false)}
+ ${availabilityEditor(current,"ideaav")}
+ <div class=card><button class="btn primary" onclick="saveIdeaLevels()">Guardar Idea</button></div>`;
+}
+function scoreAvailabilityEditor(x,prefix){let a=x.availability||{};return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb"><b>Disponibilidad por puntaje</b><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id="${prefix}_on" type=checkbox style="width:auto" ${a.enabled===true?"checked":""}> Restringir este elemento según puntaje</label><label>Puntaje mínimo</label><input id="${prefix}_min" type=number step=1 value="${a.min??""}" placeholder="Sin mínimo"><label>Puntaje máximo (opcional)</label><input id="${prefix}_max" type=number step=1 value="${a.max??""}" placeholder="Sin máximo"></div>`}
+function readScoreAvailability(x,prefix){let on=document.getElementById(prefix+"_on"),mn=document.getElementById(prefix+"_min"),mx=document.getElementById(prefix+"_max");if(!on)return;x.availability={enabled:on.checked,min:mn&&mn.value!==""?Number(mn.value):null,max:mx&&mx.value!==""?Number(mx.value):null}}
+function ideaActionItemsEditor(k,action,label,x){let items=availableItemsForPlan(current),aw=(x.actionAwards&&x.actionAwards[action])||[];return `<label>Ítems — ${label}</label>${awardRowsEditor(`il_${k}_${action}`,aw,items)}<div class=row><button class=btn onclick="addIdeaAward('${k}','${action}')">+ Ítem</button>${aw.length?`<button class="btn danger" onclick="removeIdeaAward('${k}','${action}')">Quitar</button>`:""}</div>`}
+function syncIdeaAwardRows(){let L=ensureIdeaLevels(current),nm=document.getElementById("idea_name");if(nm)current.name=nm.value;["soft","medium","hard"].forEach(k=>{let tx=document.getElementById(`il_${k}_text`),y=document.getElementById(`il_${k}_yes`),n=document.getElementById(`il_${k}_no`),u=document.getElementById(`il_${k}_up`),r=document.getElementById(`il_${k}_result`);if(tx)L[k].text=tx.value;if(y)L[k].yes=y.value;if(n)L[k].no=n.value;if(u)L[k].up=u.value;if(r)L[k].result=r.value;["yes","no","up"].forEach(a=>{let cur=(L[k].actionAwards&&L[k].actionAwards[a])||[];if(cur.length)L[k].actionAwards[a]=readAwardRows(`il_${k}_${a}`,cur.length)});readScoreAvailability(L[k],`il_${k}_av`)});readAvailability(current,"ideaav")}
+function addIdeaAward(k,a){syncIdeaAwardRows();let L=ensureIdeaLevels(current);L[k].actionAwards[a].push({itemId:"",tagId:""});save();renderIdeaBuilder()}
+function removeIdeaAward(k,a){syncIdeaAwardRows();let L=ensureIdeaLevels(current);L[k].actionAwards[a].pop();save();renderIdeaBuilder()}
+function ideaLevelEditor(k,label,x,up){return `<div class=card><h2>${label}</h2><label>Narrativa</label><textarea id="il_${k}_text">${esc(x.text||"")}</textarea><label>Texto visible — Sí</label><input id="il_${k}_yes" value="${esc(x.yes||"Sí")}">${ideaActionItemsEditor(k,"yes","Sí",x)}<label>Texto visible — No</label><input id="il_${k}_no" value="${esc(x.no||"No")}">${ideaActionItemsEditor(k,"no","No",x)}${up?`<label>Texto visible — Subir</label><input id="il_${k}_up" value="${esc(x.up||"Subir")}">${ideaActionItemsEditor(k,"up","Subir",x)}`:""}<label>Texto final de ${label}</label><textarea id="il_${k}_result" placeholder="Se muestra únicamente cuando ${label} queda como resultado final">${esc(x.result||"")}</textarea>${scoreAvailabilityEditor(x,`il_${k}_av`)}</div>`}
+function saveIdeaLevels(){
+ let L=ensureIdeaLevels(current);current.name=$("#idea_name").value;readAvailability(current,"ideaav");
+ ["soft","medium","hard"].forEach(k=>{L[k].text=$("#il_"+k+"_text").value;L[k].yes=$("#il_"+k+"_yes").value;L[k].no=$("#il_"+k+"_no").value;L[k].result=$("#il_"+k+"_result").value;let u=$("#il_"+k+"_up");if(u)L[k].up=u.value;if(!L[k].actionAwards)L[k].actionAwards={};["yes","no","up"].forEach(a=>{let cur=L[k].actionAwards[a]||[];L[k].actionAwards[a]=readAwardRows(`il_${k}_${a}`,cur.length);L[k].actionItems[a]=L[k].actionAwards[a].map(x=>x.itemId)});readScoreAvailability(L[k],`il_${k}_av`)});
+ save();renderIdeaBuilder();
+}
+function availabilityFallbackOptions(owner){
+ let v=owner?.availability?.fallback||"END";
+ let parts=[`<option value="END" ${v==="END"?"selected":""}>FIN estándar</option>`];
+ if((db.finalizations||[]).length)parts.push(`<optgroup label="Finalizaciones">${db.finalizations.map(f=>`<option value="FINAL:${f.id}" ${v===`FINAL:${f.id}`?"selected":""}>${esc(f.name||"Finalización")}</option>`).join("")}</optgroup>`);
+ let plans=db.plans.filter(p=>p.id!==owner.id);
+ ["principal","secondary","deep"].forEach(t=>{let ps=plans.filter(p=>planType(p)===t);if(ps.length)parts.push(`<optgroup label="${t==="principal"?"Planes principales":t==="secondary"?"Planes secundarios":"Ideas"}">${ps.map(p=>`<option value="PLAN:${p.id}" ${v===`PLAN:${p.id}`?"selected":""}>${esc(p.name)}</option>`).join("")}</optgroup>`)});
+ if(owner?.decisions?.length)parts.push(`<optgroup label="Decisiones de este plan">${owner.decisions.map(d=>`<option value="${d.id}" ${v===d.id?"selected":""}>${esc(d.title||d.text||"Sin título")}</option>`).join("")}</optgroup>`);
+ return parts.join("");
+}
+function resolveUnavailable(target){
+ let fb=String(target?.availability?.fallback||"END");
+ if(fb==="END"){saveExec("final",null,null);return results(null)}
+ if(fb.startsWith("FINAL:")){let f=(db.finalizations||[]).find(x=>x.id===fb.slice(6));if(!f)return results(null);saveExec("final",f.id,null);return results(f.id)}
+ if(fb.startsWith("PLAN:")){
+   let p=db.plans.find(x=>x.id===fb.slice(5));if(!p)return results(null);
+   if(!eligibleByScore(p))return resolveUnavailable(p);
+   if(!p.start)return results(null);
+   current=p;saveExec("decision",null,p.start);return renderPlay(p.start);
+ }
+ let d=(target?.decisions||[]).find(x=>x.id===fb);
+ if(d){current=target;saveExec("decision",null,d.id);return renderPlay(d.id)}
+ saveExec("final",null,null);return results(null);
+}
+function availabilityEditor(x,prefix){
+ let a=x.availability||{};
+ return `<div class=card><h3>Disponibilidad por puntaje</h3><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id="${prefix}_on" type=checkbox style="width:auto" ${a.enabled===true?"checked":""}> Restringir según puntaje de la sesión</label><label>Puntaje mínimo</label><input id="${prefix}_min" type=number step=1 value="${a.min??""}" placeholder="Sin mínimo"><label>Puntaje máximo (opcional)</label><input id="${prefix}_max" type=number step=1 value="${a.max??""}" placeholder="Sin máximo"><label>Si no cumple el puntaje, continuar en</label><select id="${prefix}_fallback">${availabilityFallbackOptions(x)}</select></div>`;
+}
+function readAvailability(x,prefix){
+ let on=document.getElementById(prefix+"_on"),mn=document.getElementById(prefix+"_min"),mx=document.getElementById(prefix+"_max");if(!on)return;
+ let fb=document.getElementById(prefix+"_fallback");x.availability={enabled:on.checked,min:mn&&mn.value!==""?Number(mn.value):null,max:mx&&mx.value!==""?Number(mx.value):null,fallback:fb?fb.value:(x.availability?.fallback||"END")};
+}function openBuilder(id){let p=db.plans.find(x=>x.id===id);if(!p)return alert("No se encontró el plan.");current=p;if(planType(p)==="deep")return renderIdeaBuilder();renderBuilder()}
+function renderBuilder(){let p=current;$('#app').innerHTML=`<div class=card><h2>Builder</h2><div class=topback><button class=btn onclick="showHome()">← Volver</button></div><label>Nombre del plan</label><input value="${esc(p.name)}" onchange="current.name=this.value;save()"><label>Grupo</label><select onchange="current.type=this.value;save()"><option value="principal" ${planType(p)==="principal"?"selected":""}>Plan principal</option><option value="secondary" ${planType(p)==="secondary"?"selected":""}>Plan secundario</option><option value="deep" ${planType(p)==="deep"?"selected":""}>Idea</option></select>${planType(p)==="deep"?`<label>Definición de la idea</label><textarea onchange="current.ideaDefinition=this.value;save()" placeholder="Describí la idea que querés presentar">${esc(p.ideaDefinition||"")}</textarea>`:""}
+${planType(p)!=="deep"?`<label style="display:flex;align-items:center;gap:10px;font-size:15px"><input type="checkbox" style="width:auto" ${p.hideNameInPlayer!==false?'checked':''} onchange="current.hideNameInPlayer=this.checked;save()"> Ocultar nombre del plan durante las decisiones</label>
+<label style="display:flex;align-items:center;gap:10px;font-size:15px"><input type="checkbox" style="width:auto" ${p.showInPlayer!==false?'checked':''} onchange="current.showInPlayer=this.checked;save()"> Mostrar este plan en el panel Ejecutar</label><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input type="checkbox" style="width:auto" ${p.showScoreAtEnd===true?'checked':''} onchange="current.showScoreAtEnd=this.checked;save()"> Mostrar puntaje al finalizar</label>`:""}<div class=row style="margin-top:12px"><button class="btn primary" onclick="addDecision()">+ Decisión</button>${planType(p)!=="deep"?`<button class=btn onclick="addItem()">+ Ítem oculto</button>`:""}<button class=btn onclick="play('${p.id}')">▶ Preview</button></div></div>
+${planType(p)!=="deep"?availabilityEditor(p,"planav")+`<div class=card><button class=btn onclick="readAvailability(current,\'planav\');save();renderBuilder()">Guardar disponibilidad</button></div>`:""}${planType(p)!=="deep"?`<div class=card><h3>Ítems ocultos</h3>${p.items.length?p.items.map(i=>`<div><b>${esc(i.name)}</b> <button class=btn onclick="editItem('${i.id}')">Editar</button></div>`).join('<hr>'):'<span class=muted>Aún no hay ítems.</span>'}</div>`:""}
+<div class=card><h3>Decisiones</h3>${p.decisions.length?p.decisions.map((d,n)=>`<div><span class=pill>${p.start===d.id?'INICIO':'#'+(n+1)}</span> <b>${esc(d.title||d.text||'Sin título')}</b><div class=row><button class=btn onclick="editDecision('${d.id}')">Editar</button><button class=btn onclick="cloneDecision('${d.id}')">Clonar</button><button class=btn onclick="playFrom('${p.id}','${d.id}')">▶ Probar desde aquí</button><button class=btn onclick="current.start='${d.id}';save();renderBuilder()">Hacer inicio</button></div></div>`).join('<hr>'):'<span class=muted>Aún no hay decisiones.</span>'}</div>`}
+function deleteItem(id){let item=current.items.find(i=>i.id===id);if(!item)return;let used=[];current.decisions.forEach(d=>d.options.forEach(o=>{if(optionItemIds(o).includes(id))used.push(d.text||"Decisión sin título")}));let msg=used.length?`Este ítem está asignado desde: ${[...new Set(used)].join(", ")}. Al eliminarlo, esas opciones dejarán de otorgarlo. ¿Continuar?`:"¿Eliminar este ítem oculto?";if(!confirm(msg))return;current.decisions.forEach(d=>d.options.forEach(o=>{if(optionItemIds(o).includes(id)){o.itemIds=optionItemIds(o).filter(x=>x!==id);o.itemId=""}}));current.items=current.items.filter(i=>i.id!==id);save();renderBuilder()}
+function addItem(){let i={id:uid(),name:"Nuevo ítem",description:"",image:""};current.items.push(i);save();editItem(i.id)}
+function editItem(id){let i=current.items.find(x=>x.id===id);$('#app').innerHTML=`<div class=card><h2>Ítem oculto</h2><label>Nombre</label><input id=n value="${esc(i.name)}"><label>Tipo</label><input id=itype value="${esc(i.type||'')}" placeholder="Ej.: Documentación"><label>Descripción</label><textarea id=d>${esc(i.description)}</textarea><label>Imagen</label><input id=im type=file accept="image/*">${i.image?`<img class=hero src="${i.image}">`:''}<div class=row style="margin-top:14px"><button class="btn primary" onclick="saveItem('${id}')">Guardar</button><button class=btn onclick=renderBuilder()>Cancelar</button><button class="btn danger" onclick="deleteItem('${id}')">Eliminar ítem</button></div></div>`}
+function saveItem(id){let i=current.items.find(x=>x.id===id);i.name=$('#n').value;i.type=$('#itype').value.trim();i.description=$('#d').value;fileData($('#im'),x=>{if(x)i.image=x;save();renderBuilder()})}
+function addDecision(){let d={id:uid(),title:"",showTitle:false,text:"Nueva pregunta",image:"",options:[],deepLinks:[],noOptionsNext:"END"};current.decisions.push(d);if(!current.start)current.start=d.id;save();editDecision(d.id)}
+function listFinalizations(){setExecutionMode(false);if(!db.finalizations)db.finalizations=[];$('#app').innerHTML=`<div class=card><h2>Finalizaciones</h2><div class=topback><button class=btn onclick="renderBuilder()">← Volver</button></div><div class=row><button class="btn primary" onclick="newFinalization()">+ Finalización</button></div></div>`+(db.finalizations.length?db.finalizations.map(f=>`<div class=card><b>${esc(f.name||"Finalización sin nombre")}</b><div class=row style="margin-top:10px"><button class=btn onclick="editFinalization('${f.id}')">Editar</button><button class=btn onclick="cloneFinalization('${f.id}')">Clonar</button></div></div>`).join(""):`<div class=card><div class=muted>No hay finalizaciones creadas.</div></div>`)}
+function cloneFinalization(id){
+ let src=(db.finalizations||[]).find(x=>x.id===id);if(!src)return;
+ let copy=JSON.parse(JSON.stringify(src));copy.id=uid();copy.name=(src.name||"Finalización")+" (copia)";
+ copy.deepLinks=(copy.deepLinks||[]).map(x=>({...x,id:uid()}));
+ db.finalizations.push(copy);save();listFinalizations();
+}
+function newFinalization(){if(!db.finalizations)db.finalizations=[];let f={id:uid(),name:"Nueva finalización",title:"Prepárate para…",intro:"",journeyMode:"all",journeyTitle:"",middle:"",itemsMode:"all",itemsTitle:"",showItemsButton:false,itemsButtonLabel:"Ver ítems obtenidos",finalTitle:"",outro:"",showFinish:true,finishLabel:"Finalizar",deepIntro:"",deepRandomPrompt:"¿Te gustó esta idea o preferís otra?",deepMode:"all",deepIncludeAll:false,deepLinks:[]};db.finalizations.push(f);save();editFinalization(f.id)}
+function editFinalization(id){let f=db.finalizations.find(x=>x.id===id);if(!f)return;currentFinalizationId=id;$('#app').innerHTML=`<div class=card><h2>Editar finalización</h2><label>Nombre interno</label><input id=f_name value="${esc(f.name||"")}"><label>Título</label><textarea id=f_title>${esc(f.title||"")}</textarea><label>Texto inicial</label><textarea id=f_intro>${esc(f.intro||"")}</textarea><label>Recorrido</label><select id=f_journey><option value=all ${f.journeyMode==="all"?"selected":""}>Todo el recorrido</option><option value=current ${f.journeyMode==="current"?"selected":""}>Sólo plan actual</option><option value=none ${f.journeyMode==="none"?"selected":""}>No mostrar</option></select><label>Título del recorrido</label><textarea id=f_jtitle>${esc(f.journeyTitle||"")}</textarea><label>Texto entre recorrido e ítems</label><textarea id=f_middle>${esc(f.middle||"")}</textarea><label>Ítems obtenidos</label><select id=f_items><option value=all ${f.itemsMode==="all"?"selected":""}>Todos los obtenidos</option><option value=current ${f.itemsMode==="current"?"selected":""}>Sólo plan actual</option><option value=none ${f.itemsMode==="none"?"selected":""}>No mostrar</option></select><label>Título de ítems</label><textarea id=f_ititle>${esc(f.itemsTitle||"")}</textarea><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id=f_itemsbutton type="checkbox" style="width:auto" ${f.showItemsButton===true?'checked':''}> Mostrar los ítems en otra pantalla mediante un botón</label><label>Texto del botón de ítems</label><input id=f_itemsbuttonlabel value="${esc(f.itemsButtonLabel||"Ver ítems obtenidos")}"><label>Título final</label><textarea id=f_finaltitle>${esc(f.finalTitle||"")}</textarea><label>Texto final</label><textarea id=f_outro>${esc(f.outro||"")}</textarea><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id=f_showfinish type="checkbox" style="width:auto" ${f.showFinish!==false?'checked':''}> Mostrar botón de finalización</label><label>Texto del botón</label><input id=f_finishlabel value="${esc(f.finishLabel||"Finalizar")}"><h3 style="margin-top:20px">Ideas</h3><label>Texto introductorio a Ideas</label><textarea id=f_deepintro>${esc(f.deepIntro||"")}</textarea><label>Texto luego de seleccionar una Idea al azar</label><textarea id=f_randomprompt>${esc(f.deepRandomPrompt||"¿Te gustó esta idea o preferís otra?")}</textarea><label>Texto del botón de ruleta</label><input id=f_rouletteLabel value="${esc(f.rouletteLabel||"Ideas al azar")}"><label>Puntos requeridos por giro de ruleta (0 = sin límite)</label><input id=f_spinCost type=number min=0 step=1 value="${Math.max(0,Number(f.spinCost)||0)}"><label>Advertencia al volver a girar</label><textarea id=f_spinWarning>${esc(f.spinWarning||"Si volvés a girar la ruleta, podés perder la idea actual.")}</textarea><label>Cómo mostrar las Ideas</label><select id=f_deepmode><option value=all ${(f.deepMode||"all")==="all"?"selected":""}>Todas</option><option value=r1 ${(f.deepMode==="r1"||f.deepMode==="random")?"selected":""}>R1 — Idea aleatoria</option></select><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id=f_deepall type=checkbox style="width:auto" ${f.deepIncludeAll===true?'checked':''}> Incluir todas las Ideas</label><div class=muted>R1 siempre comienza en Soft. Si “Incluir todas” está apagado, usa sólo las Ideas seleccionadas debajo.</div><div id=f_deeplinks>${(f.deepLinks||[]).map(x=>finalDeepEditor(x)).join("")}</div><button class=btn type=button onclick="addFinalDeep('${id}')">+ Idea</button><div class=row style="margin-top:12px"><button class="btn primary" onclick="saveFinalization('${id}')">Guardar</button><button class=btn onclick="listFinalizations()">Cancelar</button><button class="btn danger" onclick="deleteFinalization('${id}')">Eliminar finalización</button></div></div>`}
+function finalDeepEditor(x){return `<div style="margin:12px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px"><label>Texto del botón</label><input id="fd_text_${x.id}" value="${esc(x.text||"Ver idea")}"><label>Tema</label><select id="fd_plan_${x.id}"><option value="">Seleccionar…</option>${deepPlans().map(p=>`<option value="${p.id}" ${x.planId===p.id?'selected':''}>${esc(p.name)}</option>`).join("")}</select><button class="btn danger" onclick="removeFinalDeep('${x.id}')">Eliminar</button></div>`}
+function syncFinalDeep(f){(f.deepLinks||[]).forEach(x=>{let t=document.getElementById("fd_text_"+x.id),p=document.getElementById("fd_plan_"+x.id);if(t)x.text=t.value;if(p)x.planId=p.value})}
+function addFinalDeep(id){let f=db.finalizations.find(x=>x.id===id);if(!f)return;syncFinalizationFields(f);if(!f.deepLinks)f.deepLinks=[];f.deepLinks.push({id:uid(),text:"Ver idea",planId:""});save();editFinalization(id)}
+function removeFinalDeep(xid){let f=db.finalizations.find(x=>x.id===currentFinalizationId);if(!f)return;syncFinalizationFields(f);f.deepLinks=(f.deepLinks||[]).filter(x=>x.id!==xid);save();editFinalization(f.id)}
+let currentFinalizationId=null;
+function syncFinalizationFields(f){
+ let ids={name:"f_name",title:"f_title",intro:"f_intro",journeyMode:"f_journey",journeyTitle:"f_jtitle",middle:"f_middle",itemsMode:"f_items",itemsTitle:"f_ititle",itemsButtonLabel:"f_itemsbuttonlabel",finalTitle:"f_finaltitle",outro:"f_outro",finishLabel:"f_finishlabel",deepIntro:"f_deepintro",deepRandomPrompt:"f_randomprompt",spinWarning:"f_spinWarning",rouletteLabel:"f_rouletteLabel",deepMode:"f_deepmode"};
+ Object.entries(ids).forEach(([k,id])=>{let e=document.getElementById(id);if(e)f[k]=e.value});
+ let spinInput=document.getElementById("f_spinCost");if(spinInput)f.spinCost=Math.max(0,Math.floor(Number(spinInput.value)||0));
+ let ib=document.getElementById("f_itemsbutton");if(ib)f.showItemsButton=ib.checked;let sf=document.getElementById("f_showfinish");if(sf)f.showFinish=sf.checked;let da=document.getElementById("f_deepall");if(da)f.deepIncludeAll=da.checked;syncFinalDeep(f);
+}
+function saveFinalization(id){let f=db.finalizations.find(x=>x.id===id);if(!f)return;syncFinalizationFields(f);save();listFinalizations()}
+
+function deleteFinalization(id){let used=[];db.plans.forEach(p=>p.decisions.forEach(d=>d.options.forEach(o=>{if(o.next===`FINAL:${id}`)used.push(p.name)})));let msg=used.length?`Esta finalización está usada por: ${[...new Set(used)].join(", ")}. Al eliminarla, esas opciones pasarán a FIN estándar. ¿Continuar?`:"¿Eliminar esta finalización?";if(!confirm(msg))return;db.plans.forEach(p=>p.decisions.forEach(d=>d.options.forEach(o=>{if(o.next===`FINAL:${id}`)o.next="END"})));db.finalizations=db.finalizations.filter(f=>f.id!==id);save();listFinalizations()}
+function cloneDecision(id){
+ let src=current.decisions.find(x=>x.id===id);if(!src)return;
+ let copy={...src,id:uid(),title:(src.title||src.text||"Decisión")+" (copia)",options:(src.options||[]).map(o=>({...o,id:uid()})),deepLinks:(src.deepLinks||[]).map(x=>({...x,id:uid()}))};
+ current.decisions.push(copy);save();renderBuilder();
+}
+function deepPlans(){return db.plans.filter(p=>planType(p)==="deep")}
+function deepLinkEditor(d,x){return `<div style="margin:12px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px"><label>Texto del botón</label><input id="dl_text_${x.id}" value="${esc(x.text||"Ver idea")}"><label>Tema</label><select id="dl_plan_${x.id}"><option value="">Seleccionar…</option>${deepPlans().map(p=>`<option value="${p.id}" ${x.planId===p.id?'selected':''}>${esc(p.name)}</option>`).join("")}</select><button class="btn danger" onclick="removeDeepLink('${d.id}','${x.id}')">Eliminar</button></div>`}
+function syncDeepLinks(d){(d.deepLinks||[]).forEach(x=>{let t=document.getElementById("dl_text_"+x.id),p=document.getElementById("dl_plan_"+x.id);if(t)x.text=t.value;if(p)x.planId=p.value})}
+function addDeepLink(did){let d=current.decisions.find(x=>x.id===did);if(!d)return;syncDecisionEditor(did);syncDeepLinks(d);if(!d.deepLinks)d.deepLinks=[];d.deepLinks.push({id:uid(),text:"Ver idea",planId:""});save();editDecision(did)}
+function removeDeepLink(did,xid){let d=current.decisions.find(x=>x.id===did);if(!d)return;syncDecisionEditor(did);syncDeepLinks(d);d.deepLinks=(d.deepLinks||[]).filter(x=>x.id!==xid);save();editDecision(did)}
+const LAST_IDEA_KEY="dplab_last_idea_v1";
+function startDeep(planId){
+ if(planType(current)!=="deep"){let s=getExec();if(s)localStorage.setItem("dplab_idea_return_v1",JSON.stringify(s));localStorage.setItem(IDEA_AWARD_BASE_KEY,JSON.stringify({awardedLength:awarded.length,planId}));}
+ let idea=db.plans.find(p=>p.id===planId&&planType(p)==="deep");if(!idea)return alert("La idea ya no existe.");if(!eligibleByScore(idea))return alert("Esta Idea no está disponible con el puntaje actual.");
+ current=idea;ensureIdeaLevels(idea);setExecutionMode(true);let first=nextEligibleIdeaLevel(null);if(!first)return resumeFinalResult();renderIdeaLevel(first,null);
+}
+function nextEligibleIdeaLevel(after){let order=["soft","medium","hard"],L=ensureIdeaLevels(current),start=after==null?0:order.indexOf(after)+1;for(let i=Math.max(0,start);i<order.length;i++)if(eligibleByScore(L[order[i]]))return order[i];return null}
+function renderIdeaLevel(level,lastAccepted){
+ let L=ensureIdeaLevels(current),x=L[level];if(!x)return resumeFinalResult();
+ let canUp=level!=="hard";
+ $('#app').innerHTML=`<div class=card><div class=muted>${esc(current.name||"Idea")} · ${level[0].toUpperCase()+level.slice(1)}</div>${String(x.text||"").trim()?`<h2>${esc(x.text).replace(/\n/g,"<br>")}</h2>`:""}</div>
+ <button class=choice onclick="chooseIdeaLevel('${level}','yes',${lastAccepted?`'${lastAccepted}'`:"null"})"><div class=ct>${esc(x.yes||"Sí")}</div></button>
+ <button class=choice onclick="chooseIdeaLevel('${level}','no',${lastAccepted?`'${lastAccepted}'`:"null"})"><div class=ct>${esc(x.no||"No")}</div></button>
+ ${canUp?`<button class=choice onclick="chooseIdeaLevel('${level}','up',${lastAccepted?`'${lastAccepted}'`:"null"})"><div class=ct>${esc(x.up||"Subir")}</div></button>`:""}
+ <div style="text-align:center;margin:30px 0 12px"><button class=btn onclick="requestAdmin()">⚙</button></div>`;
+}
+const IDEA_AWARD_BASE_KEY="dplab_idea_award_base_v1";
+function ideaAwardBase(){try{return JSON.parse(localStorage.getItem(IDEA_AWARD_BASE_KEY)||"null")}catch(e){return null}}
+function awardIdeaAction(level,action){let x=ensureIdeaLevels(current)[level],rows=(x.actionAwards&&x.actionAwards[action])||((x.actionItems&&x.actionItems[action])||[]).map(itemId=>({itemId,tagId:""}));rows.filter(a=>a.itemId).forEach(a=>awarded.push({planId:current.id,itemId:a.itemId,tagId:a.tagId||""}));saveExec("idea",null,null)}
+function ideaNewItems(){let b=ideaAwardBase(),start=Number(b?.awardedLength||0),rows=awarded.slice(start),seen=new Set(),out=[];rows.forEach(x=>{if(typeof x==="string")x={planId:current?.id,itemId:x,tagId:""};let p=db.plans.find(y=>y.id===x.planId),it=findAwardItem(x.itemId,p),k=x.itemId+"|"+(x.tagId||"");if(it&&!seen.has(k)){seen.add(k);out.push({item:it,tagId:x.tagId||""})}});return out}
+function currentIdeaFinalization(){try{let r=JSON.parse(localStorage.getItem("dplab_idea_return_v1")||"null");return r?.finalId?(db.finalizations||[]).find(f=>f.id===r.finalId):null}catch(e){return null}}
+function chooseIdeaLevel(level,action,lastAccepted){
+ awardIdeaAction(level,action);
+ if(action==="yes")return showIdeaLevelResult(current.id,level);
+ if(action==="up"){let next=nextEligibleIdeaLevel(level);return next?renderIdeaLevel(next,level):showIdeaLevelResult(current.id,level)}
+ // No en Soft vuelve al resultado del plan. No en Medium/Hard toma el último nivel aceptado como resultado final.
+ if(lastAccepted)return showIdeaLevelResult(current.id,lastAccepted);
+ return resumeFinalResult();
+}
+function showIdeaLevelResult(planId,level){
+ let idea=db.plans.find(p=>p.id===planId);if(!idea)return;let x=ensureIdeaLevels(idea)[level];if(!x)return;
+ localStorage.setItem(LAST_IDEA_KEY,JSON.stringify({planId:idea.id,level}));
+ setExecutionMode(true);let txt=String(x.result||"").trim(),levelLabel=level==="soft"?"Soft":level==="medium"?"Medium":"Hard",newItems=ideaNewItems(),f=currentIdeaFinalization(),itemLabel=f?.itemsButtonLabel||"Ver ítems obtenidos";
+ $('#app').innerHTML=`<div class=card>${String(idea.name||"").trim()?`<h1>${esc(idea.name)}</h1>`:""}${String(x.text||"").trim()?`<h2>${esc(x.text).replace(/\n/g,"<br>")}</h2>`:""}${txt?`<div>${esc(txt).replace(/\n/g,"<br>")}</div>`:`<div class=muted>Sin texto final configurado para ${esc(levelLabel)}.</div>`}</div>${newItems.length?`<div class=card><b>¡Se agregó un nuevo ítem!</b><div style="margin-top:12px"><button class="btn primary" onclick="showIdeaItems('${idea.id}','${level}')">${esc(itemLabel)}</button></div></div>`:""}<div class=topback><button class=btn onclick="resumeFinalResult()">← Volver al resultado del plan</button></div><div style="text-align:center;margin:30px 0 12px"><button class=btn onclick="requestAdmin()">⚙</button></div>`;
+}
+function showIdeaItems(planId,level){setExecutionMode(true);let items=ideaNewItems();$('#app').innerHTML=`<div class=topback><button class="btn primary" onclick="showIdeaLevelResult('${planId}','${level}')">← Volver</button></div><div class=card><h2>Ítems obtenidos</h2>${items.length?renderGroupedItems(items):`<div class=muted>No hay ítems nuevos.</div>`}</div>`}
+function reopenLastIdea(){
+ let s=null,r=null;try{s=JSON.parse(localStorage.getItem(LAST_IDEA_KEY)||"null");r=JSON.parse(localStorage.getItem("dplab_idea_return_v1")||"null")}catch(e){}
+ let active=getExec();if(!s||!s.planId||!s.level||!r||!r.planId||!active||active.planId!==r.planId)return;
+ let idea=db.plans.find(p=>p.id===s.planId&&planType(p)==="deep");if(!idea)return;
+ current=idea;showIdeaLevelResult(idea.id,s.level);
+}
+
+function resumeFinalResult(){
+ let r=null;try{r=JSON.parse(localStorage.getItem("dplab_idea_return_v1")||"null")}catch(e){}
+ if(r&&r.planId){let p=db.plans.find(x=>x.id===r.planId);if(p){current=p;history=Array.isArray(r.history)?r.history:[];awarded=Array.isArray(awarded)?awarded.slice():Array.isArray(r.awarded)?r.awarded.slice():[];score=normScore(r.score);localStorage.setItem(SESSION_KEY,JSON.stringify({...r,score:normScore(score)}));return results(r.finalId||null,false)}}
+ showRunHome();
+}
+function ideaPool(f){
+ let all=deepPlans().filter(eligibleByScore);if(f.deepIncludeAll===true)return all;
+ let ids=new Set((f.deepLinks||[]).map(x=>x.planId).filter(Boolean));return all.filter(p=>ids.has(p.id));
+}
+const SPIN_USAGE_KEY="dplab_roulette_spins_v1";
+function rouletteUsage(){try{return JSON.parse(localStorage.getItem(SPIN_USAGE_KEY)||"{}")}catch(e){return {}}}
+function rouletteRemaining(f){let cost=Math.max(0,Math.floor(Number(f.spinCost)||0));if(!cost)return Infinity;return Math.max(0,Math.floor((Number(score.general)||0)/cost)-(rouletteUsage()[f.id]||0))}
+function randomIdea(finalId,excludeId=null){
+ let f=(db.finalizations||[]).find(x=>x.id===finalId);if(!f)return;
+ if(rouletteRemaining(f)<=0)return results(finalId,false);
+ let pool=ideaPool(f);if(excludeId&&pool.length>1)pool=pool.filter(x=>x.id!==excludeId);
+ if(!pool.length)return alert("No hay Ideas configuradas para R1.");
+ let x=pool[Math.floor(Math.random()*pool.length)],cost=Math.max(0,Math.floor(Number(f.spinCost)||0));
+ if(cost){let u=rouletteUsage();u[f.id]=(u[f.id]||0)+1;localStorage.setItem(SPIN_USAGE_KEY,JSON.stringify(u))}
+ showRandomIdeaCandidate(finalId,x.id);
+}
+function showRandomIdeaCandidate(finalId,ideaId){
+ let f=(db.finalizations||[]).find(x=>x.id===finalId),idea=db.plans.find(p=>p.id===ideaId);if(!f||!idea)return;
+ setExecutionMode(true);let left=rouletteRemaining(f),canSpin=left>0;
+ $('#app').innerHTML=`<div class=card><h1>🎲 ${esc(f.rouletteLabel||"Ideas al azar")}</h1>${Number.isFinite(left)?`<p><b>Giros disponibles: ${left}</b></p>`:`<p><b>Giros sin límite</b></p>`}<h2>${esc(idea.name||"Idea")}</h2>${String(f.deepRandomPrompt||"").trim()?`<div style="margin-top:12px">${esc(f.deepRandomPrompt).replace(/\\n/g,"<br>")}</div>`:""}${canSpin?`<p class=muted>${esc(f.spinWarning||"Si volvés a girar la ruleta, podés perder la idea actual.").replace(/\\n/g,"<br>")}</p>`:""}</div><div class=topback><button class=btn onclick="results('${finalId}',false)">← Volver al Plan</button></div><div class=row><button class="btn primary" onclick="startDeep('${idea.id}')">Ver esta idea</button>${canSpin?`<button class=btn onclick="randomIdea('${finalId}','${idea.id}')">Prefiero otra</button>`:""}</div>`;
+}
+function decisionFallbackOptions(d){let v=d.noOptionsNext||"END",decs=current.decisions.filter(x=>x.id!==d.id),parts=[`<option value="END" ${v==="END"?"selected":""}>FIN estándar</option>`];if(planType(current)!=="deep"&&(db.finalizations||[]).length)parts.push(`<optgroup label="Finalizaciones">${db.finalizations.map(f=>`<option value="FINAL:${f.id}" ${v===`FINAL:${f.id}`?"selected":""}>${esc(f.name||"Finalización")}</option>`).join("")}</optgroup>`);if(decs.length)parts.push(`<optgroup label="Decisiones de este plan">${decs.map(x=>`<option value="${x.id}" ${v===x.id?"selected":""}>${esc(x.title||x.text||"Sin título")}</option>`).join("")}</optgroup>`);["principal","secondary","deep"].forEach(t=>{let ps=db.plans.filter(p=>p.id!==current.id&&planType(p)===t);if(ps.length)parts.push(`<optgroup label="${t==="principal"?"Planes principales":t==="secondary"?"Planes secundarios":"Ideas"}">${ps.map(p=>`<option value="PLAN:${p.id}" ${v===`PLAN:${p.id}`?"selected":""}>${esc(p.name)}</option>`).join("")}</optgroup>`)});return parts.join("")}
+function editDecision(id){let d=current.decisions.find(x=>x.id===id);$('#app').innerHTML=`<div class=card><div class=topback><button class=btn onclick=renderBuilder()>← Volver</button></div><h2>Decisión</h2><label>Título interno</label><input id=qtitle value="${esc(d.title||"")}"><label style="display:flex;align-items:center;gap:10px;font-size:15px"><input id=qshowtitle type="checkbox" style="width:auto" ${d.showTitle===true?'checked':''}> Mostrar título durante la ejecución</label><label>Pregunta / texto visible</label><textarea id=q>${esc(d.text)}</textarea><label>Imagen de la pregunta</label><input id=qim type=file accept="image/*">${d.image?`<img class=hero src="${d.image}"><div class=row style="margin-top:8px"><button class="btn danger" onclick="removeDecisionImage(\'${id}\')">Quitar imagen</button></div>`:''}<label>Si ninguna opción está disponible por puntaje</label><select id=q_noopts>${decisionFallbackOptions(d)}</select><div class=row style="margin-top:12px"><button class="btn primary" onclick="saveDecision('${id}')">Guardar pregunta</button><button class=btn onclick="addOption('${id}')">+ Opción</button><button class="btn danger" onclick="deleteDecision('${id}')">Eliminar decisión</button></div></div>`+`<div class=card><h3>Profundizar</h3><div class=muted>Botones opcionales que aparecen junto con esta decisión.</div>${(d.deepLinks||[]).map(x=>deepLinkEditor(d,x)).join("")}<button class=btn onclick="addDeepLink('${d.id}')">+ Idea</button></div>`+d.options.map(o=>optionEditor(d,o)).join('')}
+function autoGrow(el){el.style.height="auto";el.style.height=Math.max(58,el.scrollHeight)+"px"}
+function optionItemIds(o){let a=Array.isArray(o.itemIds)?o.itemIds.slice():(o.itemId?[o.itemId]:[]);return [...new Set(a.filter(Boolean))]}
+function awardOptionItems(plan,o){normalizeAwards(o).forEach(a=>awarded.push({planId:plan.id,itemId:a.itemId,tagId:a.tagId||""}))}
+function applyAutoResolutions(plan,o){
+ let rows=Array.isArray(o.autoResolve)?o.autoResolve:[];
+ rows.forEach(r=>{let source=r.planId?db.plans.find(p=>p.id===r.planId):plan;
+  let d=source?.decisions?.find(x=>x.id===r.decisionId),x=d?.options?.find(y=>y.id===r.optionId);
+  if(!d||!x)return;addScore(x.score?.general);awardOptionItems(source,x);
+ });
+}
+function autoResolveEditor(d,o){
+ let rows=Array.isArray(o.autoResolve)?o.autoResolve:[];
+ let plans=[...db.plans.filter(p=>planType(p)==="principal"||planType(p)==="secondary")];
+ return `<label>Resolver decisiones omitidas</label><div class=muted>Aplica puntos e ítems (con sus tags) del plan elegido, sin agregar la decisión al recorrido visible.</div>${rows.map((r,n)=>{
+  let pid=r.planId||current.id,source=plans.find(p=>p.id===pid),choices=(source?.decisions||[]).filter(x=>pid!==current.id||x.id!==d.id),rd=choices.find(x=>x.id===r.decisionId);
+  return `<div class=card style="margin-top:8px"><label>Plan</label><select id="ar_p_${o.id}_${n}" onchange="changeAutoResolvePlan('${d.id}','${o.id}',${n},this.value)">${plans.map(p=>`<option value="${p.id}" ${pid===p.id?"selected":""}>${esc(p.name||"Sin nombre")}${p.id===current.id?" (actual)":""}</option>`).join("")}</select><label>Decisión</label><select id="ar_d_${o.id}_${n}" onchange="changeAutoResolveDecision('${d.id}','${o.id}',${n},this.value)"><option value="">Seleccionar…</option>${choices.map(x=>`<option value="${x.id}" ${r.decisionId===x.id?"selected":""}>${esc(x.title||x.text||"Sin título")}</option>`).join("")}</select><label>Opción asumida</label><select id="ar_o_${o.id}_${n}"><option value="">Seleccionar…</option>${(rd?.options||[]).map(x=>`<option value="${x.id}" ${r.optionId===x.id?"selected":""}>${esc(x.text||"Sin texto")}</option>`).join("")}</select><button class="btn danger" onclick="removeAutoResolve('${d.id}','${o.id}',${n})">Eliminar resolución</button></div>`
+ }).join("")}<button class=btn onclick="addAutoResolve('${d.id}','${o.id}')">+ Resolver decisión omitida</button>`;
+}
+function changeAutoResolvePlan(did,oid,n,pid){syncDecisionEditor(did);let o=current.decisions.find(d=>d.id===did)?.options.find(x=>x.id===oid);if(!o)return;let r=o.autoResolve?.[n];if(!r)return;r.planId=pid;r.decisionId="";r.optionId="";save();editDecision(did)}
+function changeAutoResolveDecision(did,oid,n,decisionId){syncDecisionEditor(did);let o=current.decisions.find(d=>d.id===did)?.options.find(x=>x.id===oid);if(!o)return;let r=o.autoResolve?.[n];if(!r)return;r.decisionId=decisionId;r.optionId="";save();editDecision(did)}
+function addAutoResolve(did,oid){syncDecisionEditor(did);let d=current.decisions.find(x=>x.id===did),o=d?.options.find(x=>x.id===oid);if(!o)return;if(!Array.isArray(o.autoResolve))o.autoResolve=[];o.autoResolve.push({planId:current.id,decisionId:"",optionId:""});save();editDecision(did)}
+function removeAutoResolve(did,oid,n){syncDecisionEditor(did);let d=current.decisions.find(x=>x.id===did),o=d?.options.find(x=>x.id===oid);if(!o)return;o.autoResolve=(o.autoResolve||[]).filter((_,i)=>i!==n);save();editDecision(did)}
+function optionEditor(d,o){let decs=current.decisions.filter(x=>x.id!==d.id),items=availableItemsForPlan(current),aw=editorAwards(o);return `<div class=card><h3>Opción visible</h3><label>Texto</label><textarea id="t_${o.id}" rows="2" style="min-height:58px;resize:vertical;overflow:hidden" oninput="autoGrow(this)">${esc(o.text||'')}</textarea><label>Imagen</label><input id="img_${o.id}" type=file accept="image/*">${o.image?`<img class=hero src="${o.image}"><div class=row style="margin-top:8px"><button class="btn danger" onclick="removeOptionImage('${d.id}','${o.id}')">Quitar imagen</button></div>`:''}<label>Puntos</label><input id="sc_${o.id}" type="number" step="1" value="${Number(o.score?.general)||0}">${scoreAvailabilityEditor(o,`opav_${o.id}`)}<label>Ítems ocultos otorgados</label>${awardRowsEditor(`opaw_${o.id}`,aw,items,d.id,o.id)}<div class=row><button class=btn onclick="addOptionAward('${d.id}','${o.id}')">+ Ítem</button></div>${autoResolveEditor(d,o)}<label>Siguiente paso</label><select id="nx_${o.id}"><option value="END" ${o.next==="END"||!o.next?'selected':''}>FIN estándar</option>${planType(current)!=="deep"?`<optgroup label="Finalizaciones">${(db.finalizations||[]).map(f=>`<option value="FINAL:${f.id}" ${o.next===`FINAL:${f.id}`?'selected':''}>${esc(f.name||"Finalización")}</option>`).join('')}</optgroup>`:""}<optgroup label="Decisiones de este plan">${decs.map(x=>`<option value="${x.id}" ${o.next===x.id?'selected':''}>${esc(x.title||x.text||'Sin título')}</option>`).join('')}</optgroup>${(planType(current)==="deep"?["deep"]:["principal","secondary","deep"]).map(t=>{let ps=db.plans.filter(p=>p.id!==current.id&&planType(p)===t);return ps.length?`<optgroup label="${t==="principal"?"Planes principales":t==="secondary"?"Planes secundarios":"Ideas"}">${ps.map(p=>`<option value="PLAN:${p.id}" ${o.next===`PLAN:${p.id}`?'selected':''}>${esc(p.name)}</option>`).join('')}</optgroup>`:""}).join('')}</select><div class=row style="margin-top:12px"><button class="btn primary" onclick="saveOption('${d.id}','${o.id}')">Guardar opción</button><button class="btn danger" onclick="delOption('${d.id}','${o.id}')">Eliminar</button></div></div>`}
+function addOptionAward(did,oid){let d=current.decisions.find(x=>x.id===did),o=d?.options.find(x=>x.id===oid);if(!o)return;syncDecisionEditor(did);o=d.options.find(x=>x.id===oid);if(!Array.isArray(o.itemAwards))o.itemAwards=editorAwards(o);o.itemAwards.push({itemId:"",tagId:""});save();editDecision(did)}
+function removeOptionAward(did,oid,n){syncDecisionEditor(did);let d=current.decisions.find(x=>x.id===did),o=d?.options.find(x=>x.id===oid);if(!o)return;o.itemAwards=editorAwards(o);let idx=Number.isInteger(Number(n))?Number(n):o.itemAwards.length-1;if(idx>=0&&idx<o.itemAwards.length)o.itemAwards.splice(idx,1);save();editDecision(did)}
+function deleteDecision(id){
+  let d=current.decisions.find(x=>x.id===id);if(!d)return;
+  let incoming=[];
+  current.decisions.forEach(x=>x.options.forEach(o=>{if(o.next===id)incoming.push(x.text||"Decisión sin título")}));
+  let msg=incoming.length?`Esta decisión recibe conexiones desde: ${[...new Set(incoming)].join(", ")}. Al eliminarla, esas conexiones pasarán a FIN. ¿Continuar?`:"¿Eliminar esta decisión?";
+  if(!confirm(msg))return;
+  current.decisions.forEach(x=>x.options.forEach(o=>{if(o.next===id)o.next="END"}));
+  current.decisions=current.decisions.filter(x=>x.id!==id);
+  if(current.start===id)current.start=current.decisions[0]?.id||null;
+  save();renderBuilder();
+}
+function addOption(did){let d=current.decisions.find(x=>x.id===did);syncDecisionEditor(did);d.options.push({id:uid(),text:"Nueva opción",image:"",itemId:"",itemIds:[],itemAwards:[],autoResolve:[],next:"END"});save();editDecision(did)}
+function removeDecisionImage(id){let d=current.decisions.find(x=>x.id===id);if(!d)return;syncDecisionEditor(id);syncDeepLinks(d);d.image="";save();editDecision(id)}
+function removeOptionImage(did,oid){let d=current.decisions.find(x=>x.id===did);if(!d)return;syncDecisionEditor(did);let o=d.options.find(x=>x.id===oid);if(!o)return;o.image="";save();editDecision(did)}
+function saveDecision(id){let d=current.decisions.find(x=>x.id===id);syncDecisionEditor(id);syncDeepLinks(d);fileData($('#qim'),x=>{if(x)d.image=x;save();editDecision(id)})}
+function syncDecisionEditor(did){let d=current.decisions.find(x=>x.id===did);if(!d)return;let qt=document.getElementById('qtitle'),qs=document.getElementById('qshowtitle'),q=document.getElementById('q');if(qt)d.title=qt.value;if(qs)d.showTitle=qs.checked;if(q)d.text=q.value;let nf=document.getElementById('q_noopts');if(nf)d.noOptionsNext=nf.value;d.options.forEach(o=>{let t=document.getElementById('t_'+o.id),sc=document.getElementById('sc_'+o.id),nx=document.getElementById('nx_'+o.id);if(t)o.text=t.value;if(sc)o.score={general:Number(sc.value)||0};readScoreAvailability(o,`opav_${o.id}`);let aw=editorAwards(o);o.itemAwards=readAwardRows(`opaw_${o.id}`,aw.length);o.itemIds=o.itemAwards.map(x=>x.itemId);o.itemId="";if(nx)o.next=nx.value;if(Array.isArray(o.autoResolve))o.autoResolve=o.autoResolve.map((r,n)=>{let de=document.getElementById(`ar_d_${o.id}_${n}`),op=document.getElementById(`ar_o_${o.id}_${n}`);let pe=document.getElementById(`ar_p_${o.id}_${n}`);return {planId:pe?pe.value:(r.planId||current.id),decisionId:de?de.value:r.decisionId,optionId:op?op.value:r.optionId}})})}
+function saveOption(did,oid){let d=current.decisions.find(x=>x.id===did),o=d.options.find(x=>x.id===oid);syncDecisionEditor(did);fileData($('#img_'+oid),x=>{if(x)o.image=x;save();editDecision(did)})}
+function delOption(did,oid){let d=current.decisions.find(x=>x.id===did);syncDecisionEditor(did);d.options=d.options.filter(x=>x.id!==oid);save();editDecision(did)}
+function clonePlan(id){
+  let src=db.plans.find(p=>p.id===id);if(!src)return;
+  // Deep-copy the complete plan first so newly added plan fields are inherited automatically.
+  let copy=JSON.parse(JSON.stringify(src));
+  let dm={},im={},om={};
+  (src.decisions||[]).forEach(d=>{dm[d.id]=uid();(d.options||[]).forEach(o=>om[o.id]=uid())});
+  (src.items||[]).forEach(i=>im[i.id]=uid());
+  copy.id=uid();copy.name=(src.name||"Plan")+" (copia)";
+  copy.start=src.start?(dm[src.start]||null):null;
+  copy.items=(copy.items||[]).map(i=>({...i,id:im[i.id]||uid()}));
+  copy.decisions=(copy.decisions||[]).map(d=>({
+    ...d,
+    id:dm[d.id]||uid(),
+    noOptionsNext:(()=>{let r=d.noOptionsNext||"END";return r==="END"||String(r).startsWith("PLAN:")||String(r).startsWith("FINAL:")?r:(dm[r]||"END")})(),
+    deepLinks:(d.deepLinks||[]).map(x=>({...x,id:uid()})),
+    options:(d.options||[]).map(o=>{
+      let next=o.next||"END";
+      // Only remap routes to decisions inside this plan.
+      // External destinations (FINAL:, PLAN:) and END must remain exactly selected.
+      if(next!=="END"&&!String(next).startsWith("PLAN:")&&!String(next).startsWith("FINAL:"))next=dm[next]||"END";
+      let ids=optionItemIds(o).map(id=>im[id]||id);
+      let auto=(o.autoResolve||[]).map(r=>{let own=!r.planId||r.planId===src.id;return {...r,planId:own?copy.id:r.planId,decisionId:own?(dm[r.decisionId]||r.decisionId):r.decisionId,optionId:own?(om[r.optionId]||r.optionId):r.optionId}});
+      let awards=normalizeAwards(o).map(a=>({itemId:im[a.itemId]||a.itemId,tagId:a.tagId||""}));return {...o,id:om[o.id]||uid(),itemId:"",itemIds:ids,itemAwards:awards,autoResolve:auto,next};
+    })
+  }));
+  db.plans.push(copy);save();showHome();
+}
+
+function delPlan(id){let refs=[];db.plans.forEach(p=>p.decisions.forEach(d=>d.options.forEach(o=>{if(o.next===`PLAN:${id}`)refs.push(p.name)})));let msg=refs.length?`Este plan está conectado desde: ${[...new Set(refs)].join(", ")}. Si lo eliminás, esas conexiones quedarán rotas. ¿Eliminar igualmente?`:"¿Eliminar este plan?";if(confirm(msg)){db.plans=db.plans.filter(p=>p.id!==id);save();showHome()}}
+function openPlayer(){let visible=db.plans.filter(p=>p.showInPlayer!==false);if(visible.length===1)return play(visible[0].id);if(!visible.length){$('#app').innerHTML='<div class=card><h2>No hay planes visibles</h2><div class=muted>Activá “Mostrar este plan en el panel Ejecutar” desde el Builder.</div></div>';return}$('#app').innerHTML='<div class=card><h2>Elegí un plan</h2></div>'+visible.map(p=>`<button class=choice onclick="play('${p.id}')"><div class=ct>${esc(p.name)}</div></button>`).join('')}
+function play(id){localStorage.removeItem("dplab_last_idea_v1");localStorage.removeItem("dplab_idea_return_v1");localStorage.removeItem(IDEA_AWARD_BASE_KEY);localStorage.removeItem(SPIN_USAGE_KEY);current=db.plans.find(p=>p.id===id);history=[];awarded=[];score={general:0};if(!current.start)return alert("Este plan no tiene decisión inicial.");saveExec("decision",null,current.start);setExecutionMode(true);renderPlay(current.start)}
+function playFrom(planId,decisionId){current=db.plans.find(p=>p.id===planId);history=[];awarded=[];score={general:0};localStorage.removeItem(SPIN_USAGE_KEY);setExecutionMode(true);renderPlay(decisionId)}
+function followRoute(next){next=String(next||"END");if(next==="END"){saveExec("final",null,null);return results(null)}if(next.startsWith("FINAL:")){let fid=next.slice(6);saveExec("final",fid,null);return results(fid)}if(next.startsWith("PLAN:")){let target=db.plans.find(p=>p.id===next.slice(5));if(!target)return results(null);if(!eligibleByScore(target))return resolveUnavailable(target);if(!target.start)return results(null);current=target;saveExec("decision",null,target.start);return renderPlay(target.start)}if(!current.decisions.find(x=>x.id===next)){saveExec("final",null,null);return results(null)}saveExec("decision",null,next);return renderPlay(next)}
+function renderPlay(id){let d=current.decisions.find(x=>x.id===id);if(!d)return results();let opts=(d.options||[]).filter(eligibleByScore);if(!opts.length)return followRoute(d.noOptionsNext||"END");let showName=current.hideNameInPlayer===false&&String(current.name||'').trim();let showTitle=d.showTitle===true&&String(d.title||'').trim();let showQuestion=String(d.text||'').trim();let intro=(showName||showTitle||showQuestion||d.image)?`<div class=card>${showName?`<div class=muted>${esc(current.name)}</div>`:''}${showTitle?`<h3>${esc(d.title).replace(/\n/g,"<br>")}</h3>`:''}${d.image?`<img class=hero src="${d.image}">`:''}${showQuestion?`<h2>${esc(d.text).replace(/\n/g,"<br>")}</h2>`:''}</div>`:'';$('#app').innerHTML=intro+opts.map(o=>`<button class=choice onclick="choose('${d.id}','${o.id}')">${o.image?`<img src="${o.image}">`:''}<div class=ct>${esc(o.text)}</div></button>`).join('')+(d.deepLinks||[]).filter(x=>x.planId).map(x=>`<button class="choice" onclick="startDeep('${x.planId}')"><div class=ct>${esc(x.text||'Profundizar')}</div></button>`).join('')+`<div style="text-align:center;margin:30px 0 12px"><button class=btn style="font-size:18px;padding:8px 12px;opacity:.55" onclick="requestAdmin()" aria-label="Administración">⚙</button></div>`}
+function choose(did,oid){let d=current.decisions.find(x=>x.id===did),o=d?.options.find(x=>x.id===oid);if(!d||!o||!eligibleByScore(o))return renderPlay(did);history.push({planId:current.id,decisionId:did,optionId:oid});addScore(o.score?.general);awardOptionItems(current,o);applyAutoResolutions(current,o);return followRoute(o.next||"END")}
+function lowerFirst(s=''){return s?s.charAt(0).toLocaleLowerCase()+s.slice(1):''}
+function sentenceForChoice(question,option){
+  let raw=String(question||'').trim(),o=lowerFirst(String(option||'').trim());
+  if(!raw)return o;
+  let isQuestion=raw.includes('?')||raw.includes('¿');
+  let q=raw.replace(/^¿/,'').replace(/[?¿]+$/g,'').trim();
+  let text=isQuestion?`${q}: ${o}`:`${q} ${o}`;
+  text=text.replace(/\s+/g,' ').trim();
+  return /[.!?…]$/.test(text)?text:text+'.';
+}
+function renderGroupedItems(rows){let groups=new Map();rows.forEach(r=>{let it=r?.item||r,tid=r?.tagId||"",name=tid?tagName(tid):"Sin tag";if(!groups.has(name))groups.set(name,[]);groups.get(name).push(it)});return [...groups.entries()].map(([name,list])=>`<div style="margin-top:18px"><h2>${esc(name)}</h2>${list.map(i=>`<div class=item>${i.image?`<img src="${i.image}">`:""}${String(i.name||"").trim()?`<h3>${esc(i.name)}</h3>`:""}${String(i.description||"").trim()?`<div>${esc(i.description).replace(/\n/g,"<br>")}</div>`:""}</div>`).join("")}</div>`).join("")}
+function finalItems(f,pid){let aa=f.itemsMode==="current"?awarded.filter(x=>typeof x!=="string"&&x.planId===pid):awarded,uniq=[],seen=new Set();if(f.itemsMode!=="none")aa.forEach(x=>{let p2=typeof x==="string"?pid:x.planId,iid=typeof x==="string"?x:x.itemId,tid=typeof x==="string"?"":(x.tagId||""),k=p2+"|"+iid+"|"+tid;if(seen.has(k))return;seen.add(k);let pp=db.plans.find(y=>y.id===p2),it=findAwardItem(iid,pp);if(it)uniq.push({item:it,tagId:tid})});return uniq}
+function showFinalItems(finalId){setExecutionMode(true);let f=finalId?(db.finalizations||[]).find(x=>x.id===finalId):null;if(!f)f={itemsMode:"all",itemsTitle:""};let pid=current?.id,uniq=finalItems(f,pid),parts=[];parts.push(`<div class=card>${String(f.itemsTitle||"").trim()?`<h2>${esc(f.itemsTitle)}</h2>`:`<h2>Ítems obtenidos</h2>`}${uniq.length?renderGroupedItems(uniq):`<div class=muted>No hay ítems obtenidos.</div>`}</div>`);parts.push(`<div class=topback><button class="btn primary" onclick="results(${finalId?`'${finalId}'`:"null"},false)">← Volver</button></div>`);$('#app').innerHTML=parts.join("")}
+function results(finalId=null,persist=true){setExecutionMode(true);if(persist)saveExec("final",finalId,null);let f=finalId?(db.finalizations||[]).find(x=>x.id===finalId):null;if(!f)f={title:"Prepárate para…",intro:"",journeyMode:"all",journeyTitle:"",middle:"",itemsMode:"all",itemsTitle:"",showItemsButton:false,itemsButtonLabel:"Ver ítems obtenidos",finalTitle:"",outro:"",showFinish:true,finishLabel:"Finalizar",deepIntro:"",deepRandomPrompt:"¿Te gustó esta idea o preferís otra?",deepMode:"all",deepIncludeAll:false,deepLinks:[]};let pid=current?.id,hh=f.journeyMode==="current"?history.filter(s=>(s.planId||pid)===pid):history;let journey=f.journeyMode==="none"?"":hh.map((s,n)=>{let pp=db.plans.find(x=>x.id===(s.planId||pid)),d=pp?.decisions.find(x=>x.id===s.decisionId),o=d?.options.find(x=>x.id===s.optionId);return o?`<div style="padding:10px 0;${n?'border-top:1px solid #eceff3':''}"><span class=muted>${n+1}.</span> ${esc(sentenceForChoice(d.text,o.text))}</div>`:""}).join("");let uniq=finalItems(f,pid);let parts=[];if(current?.showScoreAtEnd===true)parts.push(`<div class=card><h3>Puntaje</h3><div style="font-size:28px;font-weight:700">${score.general}</div></div>`);if(String(f.title||"").trim())parts.push(`<div class=card><h2>${esc(f.title)}</h2></div>`);if(String(f.intro||"").trim())parts.push(`<div class=card>${esc(f.intro).replace(/\n/g,"<br>")}</div>`);if(journey)parts.push(`<div class=card>${String(f.journeyTitle||"").trim()?`<h3>${esc(f.journeyTitle)}</h3>`:""}${journey}</div>`);if(String(f.middle||"").trim())parts.push(`<div class=card>${esc(f.middle).replace(/\n/g,"<br>")}</div>`);if(uniq.length&&f.showItemsButton!==true)parts.push(`<div class=card>${String(f.itemsTitle||"").trim()?`<h3>${esc(f.itemsTitle)}</h3>`:""}${renderGroupedItems(uniq)}</div>`);if(f.showItemsButton===true&&f.itemsMode!=="none")parts.push(`<div class=card><button class="btn primary" style="display:block;width:100%;text-align:center" onclick="showFinalItems(${finalId?`'${finalId}'`:"null"})">${esc(f.itemsButtonLabel||"Ver ítems obtenidos")}</button></div>`);if(String(f.finalTitle||"").trim())parts.push(`<div class=card><h2>${esc(f.finalTitle)}</h2></div>`);if(String(f.outro||"").trim())parts.push(`<div class=card>${esc(f.outro).replace(/\n/g,"<br>")}</div>`);
+{let pool=ideaPool(f);if(pool.length){let body=(f.deepMode==="r1"||f.deepMode==="random")&&rouletteRemaining(f)<=0?"":(f.deepMode==="r1"||f.deepMode==="random")?`<button class="btn primary" style="display:block;width:100%;text-align:center" onclick="randomIdea('${f.id||finalId}')">🎲 ${esc(f.rouletteLabel||"Ideas al azar")}</button>`:(f.deepIncludeAll===true?pool.map(x=>`<button class="choice" onclick="startDeep('${x.id}')"><div class=ct>${esc(x.name||"Ver idea")}</div></button>`).join(""):(f.deepLinks||[]).filter(x=>x.planId).map(x=>`<button class="choice" onclick="startDeep('${x.planId}')"><div class=ct>${esc(x.text||"Ver idea")}</div></button>`).join(""));parts.push(`<div class=card>${String(f.deepIntro||"").trim()?`<div style="margin-bottom:12px">${esc(f.deepIntro).replace(/\n/g,"<br>")}</div>`:""}${body}</div>`);}}
+let li=null,ir=null;try{li=JSON.parse(localStorage.getItem(LAST_IDEA_KEY)||"null");ir=JSON.parse(localStorage.getItem("dplab_idea_return_v1")||"null")}catch(e){};let activeSession=getExec();if(li&&ir&&activeSession&&ir.planId===activeSession.planId&&db.plans.some(p=>p.id===li.planId&&planType(p)==="deep"))parts.push(`<div class=row><button class=btn onclick="reopenLastIdea()">→ Volver a la última Idea revisada</button></div>`);
+parts.push(`<footer class="card" style="margin-top:28px"><b>Decision Plan</b> <span style="font-size:12px;opacity:.65">LAB v0.1.0 · Motor 5.13.3</span><div class="tabs" style="margin-top:10px">${f.showFinish!==false?`<button class="btn primary" onclick="showRunHome()">✓ ${esc(f.finishLabel||"Finalizar")}</button>`:""}<button class=btn onclick="requestAdmin()">⚙ Administración</button></div></footer>`);
+$('#app').innerHTML=parts.join("")}
+function downloadBackupBlob(blob,name){let a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function bytesToB64(bytes){let s="",step=0x8000;for(let i=0;i<bytes.length;i+=step)s+=String.fromCharCode(...bytes.subarray(i,i+step));return btoa(s)}
+function b64ToBytes(s){let b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+async function deriveBackupKey(password,salt,iterations){let material=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations},material,{name:"AES-GCM",length:256},false,["encrypt","decrypt"])}
+async function exportAll(){let now=new Date(),payload={format:"DecisionPlanBackup",version:1,exportedAt:now.toISOString(),data:db};downloadBackupBlob(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),'DecisionPlan-LAB-v0.1.0-backup-'+now.toISOString().slice(0,10)+'.json');localStorage.setItem("dplab_last_backup",now.toISOString());showHome()}
+async function exportEncrypted(){
+ let p1=prompt("Contraseña para cifrar el backup:");if(p1===null)return;if(p1.length<8)return alert("Usá una contraseña de al menos 8 caracteres.");
+ let p2=prompt("Repetí la contraseña del backup:");if(p2===null)return;if(p1!==p2)return alert("Las contraseñas no coinciden.");
+ if(!confirm("La contraseña no se guarda. Si la perdés, este backup no podrá recuperarse. ¿Crear backup cifrado?"))return;
+ try{
+  let now=new Date(),payload={format:"DecisionPlanBackup",version:1,exportedAt:now.toISOString(),data:db};
+  let salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),iterations=310000;
+  let key=await deriveBackupKey(p1,salt,iterations);
+  let ciphertext=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(JSON.stringify(payload))));
+  let envelope={format:"DecisionPlanEncryptedBackup",version:1,kdf:{name:"PBKDF2",hash:"SHA-256",iterations,salt:bytesToB64(salt)},cipher:{name:"AES-GCM",iv:bytesToB64(iv)},ciphertext:bytesToB64(ciphertext)};
+  downloadBackupBlob(new Blob([JSON.stringify(envelope)],{type:"application/octet-stream"}),'DecisionPlan-LAB-v0.1.0-backup-'+now.toISOString().slice(0,10)+'.dpbackup');
+  localStorage.setItem("dplab_last_backup",now.toISOString());showHome();
+ }catch(e){alert("No se pudo crear el backup cifrado.")}
+}
+async function parseBackupFile(f){
+ let text=await f.text(),parsed;try{parsed=JSON.parse(text)}catch(e){throw new Error("invalid")}
+ if(parsed?.format!=="DecisionPlanEncryptedBackup")return parsed;
+ let password=prompt("Contraseña del backup cifrado:");if(password===null)throw new Error("cancel");
+ try{
+  let salt=b64ToBytes(parsed.kdf?.salt||""),iv=b64ToBytes(parsed.cipher?.iv||""),iterations=Number(parsed.kdf?.iterations);
+  if(parsed.version!==1||parsed.kdf?.name!=="PBKDF2"||parsed.kdf?.hash!=="SHA-256"||parsed.cipher?.name!=="AES-GCM"||!iterations)throw 0;
+  let key=await deriveBackupKey(password,salt,iterations);
+  let plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,b64ToBytes(parsed.ciphertext||""));
+  return JSON.parse(new TextDecoder().decode(plain));
+ }catch(e){throw new Error("decrypt")}
+}
+async function importAll(inp){
+ let f=inp.files[0];if(!f)return;
+ try{
+  let parsed=await parseBackupFile(f),restored=(parsed&&parsed.format==="DecisionPlanBackup")?parsed.data:parsed;
+  if(!restored||!Array.isArray(restored.plans))throw new Error("invalid");
+  if(!confirm(`Restaurar este backup reemplazará los ${db.plans.length} plan(es) actuales por ${restored.plans.length}. ¿Continuar?`))return;
+  db=restored;await idbSave();showHome();alert("Backup restaurado correctamente.");
+ }catch(e){if(e.message==="cancel")return;alert(e.message==="decrypt"?"Contraseña incorrecta o backup cifrado dañado.":"El archivo no es un backup válido de Decision Plan.");}
+ finally{inp.value=""}
+}
+idbLoad().then(x=>{db=x;migrateItemTags();showHome()}).catch(()=>showHome());
+async function forceAppUpdate(){
+  const b=document.getElementById("updateAppBtn");
+  if(b){b.disabled=true;b.textContent="Buscando…";}
+  try{
+    if(!("serviceWorker" in navigator)){location.reload();return;}
+    const reg=await navigator.serviceWorker.getRegistration("./") || await navigator.serviceWorker.register("./sw.js");
+    await reg.update();
+    if(reg.waiting){
+      reg.waiting.postMessage({type:"SKIP_WAITING"});
+      return;
+    }
+    if(reg.installing){
+      reg.installing.addEventListener("statechange",()=>{
+        if(reg.installing && reg.installing.state==="installed"){
+          reg.installing.postMessage({type:"SKIP_WAITING"});
+        }
+      });
+      return;
+    }
+    location.reload();
+  }catch(e){
+    alert("No se pudo comprobar la actualización. Verificá la conexión e intentá nuevamente.");
+    if(b){b.disabled=false;b.textContent="↻ Actualizar app";}
+  }
+}
+
+// Preserve position when re-rendering the same editor; reset only on navigation.
+let dpScrollPending=false; let dpPreviousScreen=""; function dpScreenIdentity(){const app=document.getElementById("app");const editor=app.querySelector("#qtitle");if(editor){const save=app.querySelector('[onclick^="saveDecision("]');return "decision:"+(save?.getAttribute("onclick")||"")}const idea=app.querySelector("#idea_name");if(idea)return "idea:"+(idea.value||"");const fin=app.querySelector("#f_name");if(fin)return "finalization:"+(fin.value||"");return "screen:"+(app.querySelector("h1,h2")?.textContent||"").trim()} dpPreviousScreen=dpScreenIdentity(); const dpScreenObserver=new MutationObserver(()=>{if(dpScrollPending)return;dpScrollPending=true;const previous=dpPreviousScreen;const next=dpScreenIdentity();const y=window.scrollY||document.documentElement.scrollTop||0;const preserve=previous===next&&(next.startsWith("decision:")||next.startsWith("idea:")||next.startsWith("finalization:"));dpPreviousScreen=next;requestAnimationFrame(()=>{dpScrollPending=false;window.scrollTo(0,preserve?y:0)})});dpScreenObserver.observe(document.getElementById("app"),{childList:true});async function eraseAllLocalData(){alert("En LAB el borrado general está deshabilitado para evitar cualquier riesgo. Para reiniciar los datos ficticios, creá un nuevo laboratorio.");}
+
+if("serviceWorker" in navigator){
+  let reloading=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(reloading)return; reloading=true; location.reload();
+  });
+  window.addEventListener("load",async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register("./sw.js");
+      await reg.update();
+      if(reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
+    }catch(e){}
+  });
+}
+</script>
+<script>
+const LAB_VERSION="0.1.0", ENGINE_VERSION="5.13.3";
+let labReport=null;
+function runLabTests(){
+ const original={db,current,history,awarded,score};
+ const cases=[],run=(name,fn)=>{try{const detail=fn();cases.push({name,status:"PASS",detail:String(detail||"Correcto")})}catch(e){cases.push({name,status:"FAIL",detail:String(e?.message||e)})}};
+ const assert=(v,msg)=>{if(!v)throw Error(msg)};
+ const item={id:"item-fixture",name:"Ítem de prueba",description:"",image:""};
+ const plan={id:"plan-fixture",type:"principal",name:"Plan ficticio",items:[],decisions:[{id:"d1",text:"Pregunta",options:[{id:"o1",text:"Sí",itemAwards:[{itemId:item.id,tagId:"tag-fixture"}],points:5}]}]};
+ const idea={id:"idea-fixture",type:"deep",name:"Idea ficticia",items:[],decisions:[]};
+ try{
+  db={plans:[plan,idea],finalizations:[],hiddenItems:[item],itemTags:[{id:"tag-fixture",name:"Test"}]};
+  current=plan;history=[];awarded=[];score={general:0};
+  run("01 · Clasificación de planes e Ideas",()=>{assert(planType(plan)==="principal"&&planType(idea)==="deep","Clasificación incorrecta")});
+  run("02 · Disponibilidad por puntaje",()=>{assert(!eligibleByScore({availability:{enabled:true,min:5}}),"Permitió 0 puntos");score={general:5};assert(eligibleByScore({availability:{enabled:true,min:5}}),"Rechazó 5 puntos");score={general:0}});
+  run("03 · Puntos acumulados",()=>{addScore(5);addScore(3);assert(score.general===8,"Se esperaban 8 puntos")});
+  run("04 · Premios con tags",()=>{const a=normalizeAwards(plan.decisions[0].options[0]);assert(a.length===1&&a[0].tagId==="tag-fixture","Premio/tag incorrecto")});
+  run("05 · Ítem global accesible desde otro plan",()=>{assert(findAwardItem(item.id,idea)?.id===item.id,"No resolvió ítem global")});
+  run("06 · Ítems de Idea en finalización general",()=>{awarded=[{planId:idea.id,itemId:item.id,tagId:"tag-fixture"}];const all=finalItems({itemsMode:"all"},plan.id);assert(all.length===1&&all[0].item.id===item.id,"No aparece ítem de Idea en el plan");});
+  run("07 · Filtro ítems solo plan actual",()=>{assert(finalItems({itemsMode:"current"},plan.id).length===0,"Incluyó ítem de otro plan")});
+  run("08 · No duplicar ítems en resultados",()=>{awarded.push({...awarded[0]});assert(finalItems({itemsMode:"all"},plan.id).length===1,"Duplicó ítem")});
+  run("09 · Resolución de referencias a opciones",()=>{assert(optionItemIds({itemIds:["a","a","b"]}).join(",")==="a,b","No eliminó duplicados")});
+  run("10 · Narrativa de elección",()=>{assert(sentenceForChoice("Prefiero","Caminar")==="Prefiero caminar.","Narrativa inesperada")});
+  run("11 · Giros según puntaje",()=>{score={general:8};assert(rouletteRemaining({id:"fixture-no-use",spinCost:5})===1,"Cantidad de giros incorrecta");assert(rouletteRemaining({id:"fixture-no-use",spinCost:0})===Infinity,"Giros ilimitados incorrectos")});
+  run("12 · Aislamiento de identificadores",()=>{assert(KEY==="decision_planner_lab_v1","Clave IndexedDB incorrecta");assert(SESSION_KEY.startsWith("dplab_"),"Clave sesión incorrecta");});
+ }finally{db=original.db;current=original.current;history=original.history;awarded=original.awarded;score=original.score;}
+ const passed=cases.filter(c=>c.status==="PASS").length;
+ labReport={format:"DecisionPlanLabTestReport",labVersion:LAB_VERSION,engineVersion:ENGINE_VERSION,timestamp:new Date().toISOString(),origin:location.origin,path:location.pathname,storage:"LAB (separado)",testData:"sintéticos en memoria",summary:{total:cases.length,passed,failed:cases.length-passed},tests:cases,notes:["Pruebas unitarias y de integración ligera; no sustituyen pruebas E2E en Safari.","No se exportan planes, ítems, sesiones ni datos personales."]};
+ document.getElementById("labResults").innerHTML=`<b>${passed}/${cases.length} aprobadas</b>`+cases.map(c=>`<div style="margin-top:8px">${c.status==="PASS"?"✅":"❌"} ${esc(c.name)}${c.status==="FAIL"?` — ${esc(c.detail)}`:""}</div>`).join("");
+ document.getElementById("labExport").disabled=false;
+}
+function exportLabReport(){
+ if(!labReport)return;
+ const blob=new Blob([JSON.stringify(labReport,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download="decision-plan-LAB-results-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+</script>
+</body></html>
